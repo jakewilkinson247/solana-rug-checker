@@ -331,8 +331,6 @@
     </div>
 
     <script>
-        const HELIUS_API_KEY = 'a59cb0b3-a435-4757-bbcf-846e2e52c8d7';
-
         async function checkToken() {
             const tokenInput = document.getElementById('tokenInput').value.trim();
             const errorDiv = document.getElementById('error');
@@ -343,7 +341,7 @@
             resultsDiv.style.display = 'none';
 
             if (!tokenInput) {
-                errorDiv.textContent = '❌ Token not found or API limit reached.';
+                errorDiv.textContent = '❌ Please enter a token address.';
                 errorDiv.style.display = 'flex';
                 return;
             }
@@ -351,32 +349,49 @@
             loadingDiv.style.display = 'block';
 
             try {
-                const response = await fetch(
-                    `https://api.helius.xyz/v0/token/${tokenInput}?api-key=${HELIUS_API_KEY}`
-                );
+                // Fetch token metadata and holder info from Solscan
+                const [tokenResponse, holdersResponse] = await Promise.all([
+                    fetch(`https://api.solscan.io/api/token/meta?tokenAddress=${tokenInput}`),
+                    fetch(`https://api.solscan.io/api/token/holders?tokenAddress=${tokenInput}&offset=0&limit=100`)
+                ]);
 
-                if (!response.ok) {
-                    throw new Error('Token not found or API limit reached');
+                if (!tokenResponse.ok || !holdersResponse.ok) {
+                    throw new Error('Token not found');
                 }
 
-                const data = await response.json();
-                displayResults(data, tokenInput);
+                const tokenData = await tokenResponse.json();
+                const holdersData = await holdersResponse.json();
+
+                if (!tokenData.success || !holdersData.success) {
+                    throw new Error('Invalid token');
+                }
+
+                displayResults(tokenData, holdersData, tokenInput);
             } catch (error) {
                 loadingDiv.style.display = 'none';
-                errorDiv.innerHTML = `❌ Token not found or API limit reached.`;
+                errorDiv.innerHTML = `❌ Token not found or API error.`;
                 errorDiv.style.display = 'flex';
             }
         }
 
-        function displayResults(data, tokenAddress) {
+        function displayResults(tokenData, holdersData, tokenAddress) {
             const loadingDiv = document.getElementById('loading');
             const resultsDiv = document.getElementById('results');
 
             loadingDiv.style.display = 'none';
 
-            const holders = data.token_info?.holder_count || 0;
-            const topHolder = data.top_holder_percentage || 0;
-            const top10 = data.top_10_holder_percentage || 0;
+            const holders = holdersData.data?.length || 0;
+            const holdersList = holdersData.data || [];
+            
+            // Calculate percentages
+            let totalBalance = holdersList.reduce((sum, h) => sum + parseFloat(h.amount || 0), 0);
+            const holdersWithPercent = holdersList.map((h, i) => ({
+                ...h,
+                percentage: (parseFloat(h.amount || 0) / totalBalance) * 100
+            }));
+
+            const topHolder = holdersWithPercent.length > 0 ? holdersWithPercent[0].percentage : 0;
+            const top10 = holdersWithPercent.slice(0, 10).reduce((sum, h) => sum + h.percentage, 0);
 
             let riskLevel = 'LOW';
             let riskClass = 'risk-low';
@@ -409,7 +424,7 @@
             riskBadge.className = `risk-badge ${riskClass}`;
             riskBadge.textContent = `${riskEmoji} Risk Level: ${riskLevel}`;
 
-            const top20Holders = data.top_holders?.slice(0, 20) || [];
+            const top20Holders = holdersWithPercent.slice(0, 20);
             const bubbleTrace = {
                 x: top20Holders.map((h, i) => i + 1),
                 y: top20Holders.map(h => h.percentage),
@@ -421,7 +436,7 @@
                     showscale: true,
                     colorbar: { title: '%' }
                 },
-                text: top20Holders.map(h => `Holder ${h.rank}: ${h.percentage.toFixed(2)}%`),
+                text: top20Holders.map((h, i) => `Holder ${i + 1}: ${h.percentage.toFixed(2)}%`),
                 hoverinfo: 'text'
             };
 
@@ -437,11 +452,11 @@
 
             Plotly.newPlot('chart', [bubbleTrace], layout, { responsive: true });
 
-            const holdersList = document.getElementById('holdersList');
-            holdersList.innerHTML = top20Holders.slice(0, 15).map(holder => `
+            const holdersListDiv = document.getElementById('holdersList');
+            holdersListDiv.innerHTML = top20Holders.slice(0, 15).map((holder, idx) => `
                 <div class="holder-item">
                     <div>
-                        <div class="holder-address">${holder.owner.substring(0, 10)}...${holder.owner.substring(-10)}</div>
+                        <div class="holder-address">${(holder.owner || holder.address || '').substring(0, 10)}...${(holder.owner || holder.address || '').substring(-10)}</div>
                         <div class="percentage-bar">
                             <div class="percentage-fill" style="width: ${holder.percentage}%"></div>
                         </div>
