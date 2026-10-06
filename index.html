@@ -3,219 +3,467 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solana Rug Checker 🔍</title>
+    <title>Solana Rug Checker</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%); color: #fff; padding: 10px; min-height: 100vh; }
-        .container { max-width: 500px; margin: 0 auto; padding: 10px; }
-        .header { text-align: center; margin-bottom: 20px; }
-        .header h1 { font-size: 28px; margin-bottom: 5px; background: linear-gradient(45deg, #00d4ff, #0099ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .input-group { display: flex; gap: 8px; margin-bottom: 15px; }
-        input { flex: 1; padding: 12px; border: 2px solid #00d4ff; background: #1a1a2e; color: #fff; border-radius: 8px; font-size: 14px; }
-        input::placeholder { color: #666; }
-        button { padding: 12px 20px; background: linear-gradient(45deg, #00d4ff, #0099ff); color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: transform 0.2s; }
-        button:active { transform: scale(0.95); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .risk-banner { padding: 15px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; display: none; }
-        .risk-banner.high { background: #ff4444; display: block; }
-        .risk-banner.medium { background: #ffaa00; display: block; }
-        .risk-banner.low { background: #00dd00; color: #000; display: block; }
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-        .stat-card { background: rgba(0, 212, 255, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #00d4ff; }
-        .stat-label { font-size: 12px; color: #aaa; margin-bottom: 5px; }
-        .stat-value { font-size: 20px; font-weight: bold; }
-        .chart-container { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px; margin-bottom: 15px; min-height: 400px; }
-        .holders-list { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px; max-height: 300px; overflow-y: auto; }
-        .holder-item { background: rgba(0, 212, 255, 0.05); padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #00d4ff; font-size: 13px; }
-        .holder-address { font-family: monospace; color: #00d4ff; margin-bottom: 4px; }
-        .holder-bar { background: rgba(255, 255, 255, 0.2); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
-        .holder-fill { height: 100%; background: linear-gradient(90deg, #00d4ff, #0099ff); transition: width 0.3s; }
-        .holder-percent { color: #aaa; font-size: 12px; }
-        .loading { text-align: center; padding: 20px; color: #00d4ff; }
-        .error { background: #ff4444; padding: 12px; border-radius: 8px; margin-bottom: 15px; display: none; }
-        .title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .title-row h2 { font-size: 16px; }
-        @media (max-width: 480px) { .container { padding: 5px; } .header h1 { font-size: 24px; } .stats-grid { grid-template-columns: 1fr; } }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0f1e3d 0%, #1a2f5a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: rgba(20, 30, 50, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 100, 200, 0.2);
+            border: 1px solid rgba(100, 200, 255, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .title {
+            font-size: 32px;
+            color: #00d4ff;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .subtitle {
+            color: #8899aa;
+            font-size: 14px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid rgba(100, 200, 255, 0.3);
+            border-radius: 10px;
+            background: rgba(10, 20, 40, 0.8);
+            color: #00d4ff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            border-color: #00d4ff;
+        }
+
+        input::placeholder {
+            color: rgba(100, 150, 200, 0.5);
+        }
+
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0088ff 100%);
+            color: #0a1428;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .error {
+            background: rgba(255, 60, 60, 0.2);
+            border: 2px solid #ff3c3c;
+            color: #ff6b6b;
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #00d4ff;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            border-top: 2px solid #00d4ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+        }
+
+        .risk-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .risk-critical {
+            background: rgba(255, 50, 50, 0.2);
+            color: #ff3232;
+            border: 1px solid #ff3232;
+        }
+
+        .risk-high {
+            background: rgba(255, 100, 20, 0.2);
+            color: #ff6414;
+            border: 1px solid #ff6414;
+        }
+
+        .risk-medium {
+            background: rgba(255, 180, 0, 0.2);
+            color: #ffb400;
+            border: 1px solid #ffb400;
+        }
+
+        .risk-caution {
+            background: rgba(255, 230, 0, 0.2);
+            color: #ffe600;
+            border: 1px solid #ffe600;
+        }
+
+        .risk-low {
+            background: rgba(50, 200, 100, 0.2);
+            color: #32c864;
+            border: 1px solid #32c864;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            background: rgba(100, 200, 255, 0.1);
+            padding: 16px;
+            border-radius: 10px;
+            border-left: 3px solid #00d4ff;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #8899aa;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            color: #00d4ff;
+            font-weight: 600;
+        }
+
+        .chart-container {
+            background: rgba(10, 20, 40, 0.6);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(100, 200, 255, 0.1);
+        }
+
+        .holders-list {
+            background: rgba(10, 20, 40, 0.6);
+            border-radius: 10px;
+            padding: 16px;
+            border: 1px solid rgba(100, 200, 255, 0.1);
+        }
+
+        .holders-title {
+            color: #00d4ff;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .holder-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(100, 200, 255, 0.1);
+            font-size: 13px;
+        }
+
+        .holder-item:last-child {
+            border-bottom: none;
+        }
+
+        .holder-address {
+            color: #8899aa;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        .holder-percentage {
+            color: #00d4ff;
+            font-weight: 600;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        .percentage-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(100, 200, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+
+        .percentage-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff 0%, #0088ff 100%);
+            border-radius: 2px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+
+            .title {
+                font-size: 24px;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔍 Solana Rug Checker</h1>
-            <p style="color: #aaa; font-size: 14px;">Analyze token holder distribution</p>
+            <div class="title">🔍 Solana Rug Checker</div>
+            <div class="subtitle">Analyze token holder distribution</div>
         </div>
 
         <div class="input-group">
-            <input type="text" id="tokenInput" placeholder="Paste token mint address...">
-            <button onclick="analyzeToken()">Check</button>
+            <input type="text" id="tokenInput" placeholder="Enter token mint address" value="">
+            <button onclick="checkToken()">Check</button>
         </div>
 
-        <div class="error" id="error"></div>
-        <div class="risk-banner" id="riskBanner"></div>
-
-        <div class="stats-grid" id="statsGrid" style="display: none;">
-            <div class="stat-card">
-                <div class="stat-label">Top Holder %</div>
-                <div class="stat-value" id="topHolderPercent">-</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="loading" class="loading" style="display: none;"><div class="spinner"></div> Loading token data...</div>
+        
+        <div id="results" class="results">
+            <div id="riskBadge"></div>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-label">Top Holder %</div>
+                    <div class="stat-value" id="topHolder">-</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Top 10 %</div>
+                    <div class="stat-value" id="top10">-</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Holder Count</div>
+                    <div class="stat-value" id="holderCount">-</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Risk Level</div>
+                    <div class="stat-value" id="riskLevel">-</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Top 10 %</div>
-                <div class="stat-value" id="top10Percent">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Holder Count</div>
-                <div class="stat-value" id="holderCount">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Risk Level</div>
-                <div class="stat-value" id="riskLevel">-</div>
-            </div>
-        </div>
 
-        <div id="loadingContainer" class="loading" style="display: none;">
-            ⏳ Fetching holder data...
-        </div>
+            <div class="chart-container">
+                <div id="chart"></div>
+            </div>
 
-        <div class="chart-container" id="chartContainer" style="display: none;">
-            <div id="bubbleChart"></div>
-        </div>
-
-        <div class="holders-list" id="holdersList" style="display: none;">
-            <div class="title-row"><h2>Top Holders</h2></div>
-            <div id="holdersContainer"></div>
+            <div class="holders-list">
+                <div class="holders-title">Top 15 Holders</div>
+                <div id="holdersList"></div>
+            </div>
         </div>
     </div>
 
     <script>
-        const HELIUS_API_KEY = "e0e0f250-192b-48e7-a6a7-2337eb0a09d";
+        const HELIUS_API_KEY = 'e0e0f250-192b-48e7-a6a7-2337eb0a09d4';
 
-        async function analyzeToken() {
-            const tokenMint = document.getElementById("tokenInput").value.trim();
-            if (!tokenMint || tokenMint.length < 30) {
-                showError("Please enter a valid token mint address");
+        async function checkToken() {
+            const tokenInput = document.getElementById('tokenInput').value.trim();
+            const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+            const resultsDiv = document.getElementById('results');
+
+            errorDiv.style.display = 'none';
+            resultsDiv.style.display = 'none';
+
+            if (!tokenInput) {
+                errorDiv.textContent = '❌ Token not found or API limit reached.';
+                errorDiv.style.display = 'flex';
                 return;
             }
 
-            document.getElementById("loadingContainer").style.display = "block";
-            document.getElementById("error").style.display = "none";
-            document.getElementById("statsGrid").style.display = "none";
-            document.getElementById("chartContainer").style.display = "none";
-            document.getElementById("holdersList").style.display = "none";
+            loadingDiv.style.display = 'block';
 
             try {
                 const response = await fetch(
-                    `https://api.helius.xyz/v0/token/${tokenMint}?api-key=${HELIUS_API_KEY}`
+                    `https://api.helius.xyz/v0/token/${tokenInput}?api-key=${HELIUS_API_KEY}`
                 );
 
                 if (!response.ok) {
-                    throw new Error("Token not found or API limit reached.");
+                    throw new Error('Token not found or API limit reached');
                 }
 
                 const data = await response.json();
-                const holders = data.result || [];
-
-                if (holders.length === 0) {
-                    throw new Error("No holder data found");
-                }
-
-                holders.sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount));
-
-                const totalSupply = holders.reduce((sum, h) => parseFloat(h.amount || 0), 0);
-                const topHolder = parseFloat(holders[0].amount) / totalSupply;
-                const top10Sum = holders.slice(0, 10).reduce((sum, h) => parseFloat(h.amount || 0), 0);
-                const top10Percent = top10Sum / totalSupply;
-
-                let riskLevel = "🟢 LOW";
-                let riskClass = "low";
-                let riskColor = "#00dd00";
-
-                if (topHolder > 0.7) {
-                    riskLevel = "🔴 CRITICAL";
-                    riskClass = "high";
-                    riskColor = "#ff4444";
-                } else if (topHolder > 0.5) {
-                    riskLevel = "🔴 HIGH";
-                    riskClass = "high";
-                    riskColor = "#ff4444";
-                } else if (topHolder > 0.3) {
-                    riskLevel = "🟠 MEDIUM";
-                    riskClass = "medium";
-                    riskColor = "#ffaa00";
-                } else if (topHolder > 0.15) {
-                    riskLevel = "🟡 CAUTION";
-                    riskClass = "medium";
-                    riskColor = "#ffaa00";
-                }
-
-                document.getElementById("topHolderPercent").textContent = (topHolder * 100).toFixed(2) + "%";
-                document.getElementById("top10Percent").textContent = (top10Percent * 100).toFixed(2) + "%";
-                document.getElementById("holderCount").textContent = holders.length;
-                document.getElementById("riskLevel").textContent = riskLevel;
-                document.getElementById("statsGrid").style.display = "grid";
-
-                const banner = document.getElementById("riskBanner");
-                banner.className = "risk-banner " + riskClass;
-                banner.textContent = riskLevel + " - " + (topHolder > 0.3 ? "⚠️ POTENTIAL RUG RISK" : "✅ LOOKS LEGITIMATE");
-                banner.style.display = "block";
-
-                createBubbleChart(holders, totalSupply, riskColor);
-                displayHolders(holders, totalSupply);
-
-                document.getElementById("loadingContainer").style.display = "none";
-
+                displayResults(data, tokenInput);
             } catch (error) {
-                showError(error.message || "Error fetching data");
-                document.getElementById("loadingContainer").style.display = "none";
+                loadingDiv.style.display = 'none';
+                errorDiv.innerHTML = `❌ Token not found or API limit reached.`;
+                errorDiv.style.display = 'flex';
             }
         }
 
-        function createBubbleChart(holders, totalSupply, mainColor) {
-            const topHolders = holders.slice(0, 20);
-            const x = topHolders.map((h, i) => i + 1);
-            const y = topHolders.map(h => (parseFloat(h.amount) / totalSupply) * 100);
-            const sizes = topHolders.map(h => parseFloat(h.amount) / totalSupply * 100);
-            const colors = topHolders.map((h, i) => i === 0 ? "#ff4444" : i < 5 ? "#ffaa00" : mainColor);
+        function displayResults(data, tokenAddress) {
+            const loadingDiv = document.getElementById('loading');
+            const resultsDiv = document.getElementById('results');
 
-            const trace = {
-                x: x, y: y, mode: 'markers',
-                marker: { size: sizes, color: colors, opacity: 0.7, line: { color: '#fff', width: 1 } },
-                text: topHolders.map((h, i) => `Holder ${i + 1}<br>${(parseFloat(h.amount) / totalSupply * 100).toFixed(2)}%<br>${h.address.slice(0, 8)}...`),
-                hoverinfo: 'text', type: 'scatter'
+            loadingDiv.style.display = 'none';
+
+            // Extract holder data
+            const holders = data.token_info?.holder_count || 0;
+            const topHolder = data.top_holder_percentage || 0;
+            const top10 = data.top_10_holder_percentage || 0;
+
+            // Determine risk level
+            let riskLevel = 'LOW';
+            let riskClass = 'risk-low';
+            let riskEmoji = '🟢';
+
+            if (topHolder > 70) {
+                riskLevel = 'CRITICAL';
+                riskClass = 'risk-critical';
+                riskEmoji = '🔴';
+            } else if (topHolder > 50) {
+                riskLevel = 'HIGH';
+                riskClass = 'risk-high';
+                riskEmoji = '🟠';
+            } else if (topHolder > 30) {
+                riskLevel = 'MEDIUM';
+                riskClass = 'risk-medium';
+                riskEmoji = '🟡';
+            } else if (topHolder > 15) {
+                riskLevel = 'CAUTION';
+                riskClass = 'risk-caution';
+                riskEmoji = '🟡';
+            }
+
+            // Update stats
+            document.getElementById('topHolder').textContent = topHolder.toFixed(2) + '%';
+            document.getElementById('top10').textContent = top10.toFixed(2) + '%';
+            document.getElementById('holderCount').textContent = holders.toLocaleString();
+            document.getElementById('riskLevel').textContent = riskEmoji + ' ' + riskLevel;
+
+            // Update risk badge
+            const riskBadge = document.getElementById('riskBadge');
+            riskBadge.className = `risk-badge ${riskClass}`;
+            riskBadge.textContent = `${riskEmoji} Risk Level: ${riskLevel}`;
+
+            // Create bubble chart
+            const top20Holders = data.top_holders?.slice(0, 20) || [];
+            const bubbleTrace = {
+                x: top20Holders.map((h, i) => i + 1),
+                y: top20Holders.map(h => h.percentage),
+                mode: 'markers',
+                marker: {
+                    size: top20Holders.map(h => Math.sqrt(h.percentage) * 3),
+                    color: top20Holders.map(h => h.percentage),
+                    colorscale: 'Viridis',
+                    showscale: true,
+                    colorbar: { title: '%' }
+                },
+                text: top20Holders.map(h => `Holder ${h.rank}: ${h.percentage.toFixed(2)}%`),
+                hoverinfo: 'text'
             };
 
             const layout = {
-                title: 'Top 20 Holders Distribution',
-                xaxis: { title: 'Holder Rank', color: '#aaa', gridcolor: '#333' },
-                yaxis: { title: 'Ownership %', color: '#aaa', gridcolor: '#333' },
-                plot_bgcolor: 'rgba(0,0,0,0.2)',
-                paper_bgcolor: 'rgba(26,26,46,0)',
-                font: { color: '#fff', size: 12 },
-                margin: { l: 50, r: 20, t: 40, b: 50 },
-                hovermode: 'closest'
+                title: 'Top 20 Holder Distribution',
+                xaxis: { title: 'Holder Rank' },
+                yaxis: { title: 'Percentage (%)' },
+                plot_bgcolor: 'rgba(10, 20, 40, 0.5)',
+                paper_bgcolor: 'rgba(10, 20, 40, 0)',
+                font: { color: '#00d4ff' },
+                margin: { l: 50, r: 50, t: 50, b: 50 }
             };
 
-            Plotly.newPlot('bubbleChart', [trace], layout, { responsive: true });
-            document.getElementById("chartContainer").style.display = "block";
+            Plotly.newPlot('chart', [bubbleTrace], layout, { responsive: true });
+
+            // Display top 15 holders list
+            const holdersList = document.getElementById('holdersList');
+            holdersList.innerHTML = top20Holders.slice(0, 15).map(holder => `
+                <div class="holder-item">
+                    <div>
+                        <div class="holder-address">${holder.owner.substring(0, 10)}...${holder.owner.substring(-10)}</div>
+                        <div class="percentage-bar">
+                            <div class="percentage-fill" style="width: ${holder.percentage}%"></div>
+                        </div>
+                    </div>
+                    <div class="holder-percentage">${holder.percentage.toFixed(2)}%</div>
+                </div>
+            `).join('');
+
+            resultsDiv.style.display = 'block';
         }
 
-        function displayHolders(holders, totalSupply) {
-            const container = document.getElementById("holdersContainer");
-            container.innerHTML = holders.slice(0, 15).map((holder, i) => {
-                const percent = (parseFloat(holder.amount) / totalSupply) * 100;
-                return `<div class="holder-item"><div class="holder-address">#${i + 1} ${holder.address.slice(0, 12)}...</div><div class="holder-bar"><div class="holder-fill" style="width: ${Math.min(percent, 100)}%"></div></div><div class="holder-percent">${percent.toFixed(2)}%</div></div>`;
-            }).join("");
-            document.getElementById("holdersList").style.display = "block";
-        }
-
-        function showError(message) {
-            const errorDiv = document.getElementById("error");
-            errorDiv.textContent = "❌ " + message;
-            errorDiv.style.display = "block";
-        }
-
-        document.getElementById("tokenInput").addEventListener("keypress", (e) => {
-            if (e.key === "Enter") analyzeToken();
+        // Allow Enter key to check token
+        document.getElementById('tokenInput').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                checkToken();
+            }
         });
     </script>
 </body>
