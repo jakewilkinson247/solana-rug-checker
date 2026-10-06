@@ -331,7 +331,7 @@
     </div>
 
     <script>
-        const HELIUS_API_KEY = 'const HELIUS_API_KEY = 'a59cb0b3-a435-4757-bbcf-846e2e52c8d7';
+        const HELIUS_API_KEY = 'a59cb0b3-a435-4757-bbcf-846e2e52c8d7';
 
         async function checkToken() {
             const tokenInput = document.getElementById('tokenInput').value.trim();
@@ -374,12 +374,10 @@
 
             loadingDiv.style.display = 'none';
 
-            // Extract holder data
             const holders = data.token_info?.holder_count || 0;
             const topHolder = data.top_holder_percentage || 0;
             const top10 = data.top_10_holder_percentage || 0;
 
-            // Determine risk level
             let riskLevel = 'LOW';
             let riskClass = 'risk-low';
             let riskEmoji = '🟢';
@@ -402,18 +400,15 @@
                 riskEmoji = '🟡';
             }
 
-            // Update stats
             document.getElementById('topHolder').textContent = topHolder.toFixed(2) + '%';
             document.getElementById('top10').textContent = top10.toFixed(2) + '%';
             document.getElementById('holderCount').textContent = holders.toLocaleString();
             document.getElementById('riskLevel').textContent = riskEmoji + ' ' + riskLevel;
 
-            // Update risk badge
             const riskBadge = document.getElementById('riskBadge');
             riskBadge.className = `risk-badge ${riskClass}`;
             riskBadge.textContent = `${riskEmoji} Risk Level: ${riskLevel}`;
 
-            // Create bubble chart
             const top20Holders = data.top_holders?.slice(0, 20) || [];
             const bubbleTrace = {
                 x: top20Holders.map((h, i) => i + 1),
@@ -442,7 +437,6 @@
 
             Plotly.newPlot('chart', [bubbleTrace], layout, { responsive: true });
 
-            // Display top 15 holders list
             const holdersList = document.getElementById('holdersList');
             holdersList.innerHTML = top20Holders.slice(0, 15).map(holder => `
                 <div class="holder-item">
@@ -459,7 +453,6 @@
             resultsDiv.style.display = 'block';
         }
 
-        // Allow Enter key to check token
         document.getElementById('tokenInput').addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
                 checkToken();
