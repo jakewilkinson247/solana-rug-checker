@@ -349,23 +349,13 @@
             loadingDiv.style.display = 'block';
 
             try {
-                // Fetch token metadata and holder info from Solscan
-                const [tokenResponse, holdersResponse] = await Promise.all([
-                    fetch(`https://api.solscan.io/api/token/meta?tokenAddress=${tokenInput}`),
-                    fetch(`https://api.solscan.io/api/token/holders?tokenAddress=${tokenInput}&offset=0&limit=100`)
-                ]);
+                const response = await fetch(`/api/check-token?tokenAddress=${tokenInput}`);
 
-                if (!tokenResponse.ok || !holdersResponse.ok) {
+                if (!response.ok) {
                     throw new Error('Token not found');
                 }
 
-                const tokenData = await tokenResponse.json();
-                const holdersData = await holdersResponse.json();
-
-                if (!tokenData.success || !holdersData.success) {
-                    throw new Error('Invalid token');
-                }
-
+                const { tokenData, holdersData } = await response.json();
                 displayResults(tokenData, holdersData, tokenInput);
             } catch (error) {
                 loadingDiv.style.display = 'none';
@@ -383,7 +373,6 @@
             const holders = holdersData.data?.length || 0;
             const holdersList = holdersData.data || [];
             
-            // Calculate percentages
             let totalBalance = holdersList.reduce((sum, h) => sum + parseFloat(h.amount || 0), 0);
             const holdersWithPercent = holdersList.map((h, i) => ({
                 ...h,
