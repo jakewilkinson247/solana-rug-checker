@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Rug Checker 🔍</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%); color: #fff; padding: 10px; min-height: 100vh; }
+        .container { max-width: 500px; margin: 0 auto; padding: 10px; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { font-size: 28px; margin-bottom: 5px; background: linear-gradient(45deg, #00d4ff, #0099ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .input-group { display: flex; gap: 8px; margin-bottom: 15px; }
+        input { flex: 1; padding: 12px; border: 2px solid #00d4ff; background: #1a1a2e; color: #fff; border-radius: 8px; font-size: 14px; }
+        input::placeholder { color: #666; }
+        button { padding: 12px 20px; background: linear-gradient(45deg, #00d4ff, #0099ff); color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: transform 0.2s; }
+        button:active { transform: scale(0.95); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .risk-banner { padding: 15px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; display: none; }
+        .risk-banner.high { background: #ff4444; display: block; }
+        .risk-banner.medium { background: #ffaa00; display: block; }
+        .risk-banner.low { background: #00dd00; color: #000; display: block; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: rgba(0, 212, 255, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #00d4ff; }
+        .stat-label { font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        .stat-value { font-size: 20px; font-weight: bold; }
+        .chart-container { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px; margin-bottom: 15px; min-height: 400px; }
+        .holders-list { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px; max-height: 300px; overflow-y: auto; }
+        .holder-item { background: rgba(0, 212, 255, 0.05); padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #00d4ff; font-size: 13px; }
+        .holder-address { font-family: monospace; color: #00d4ff; margin-bottom: 4px; }
+        .holder-bar { background: rgba(255, 255, 255, 0.2); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
+        .holder-fill { height: 100%; background: linear-gradient(90deg, #00d4ff, #0099ff); transition: width 0.3s; }
+        .holder-percent { color: #aaa; font-size: 12px; }
+        .loading { text-align: center; padding: 20px; color: #00d4ff; }
+        .error { background: #ff4444; padding: 12px; border-radius: 8px; margin-bottom: 15px; display: none; }
+        .title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .title-row h2 { font-size: 16px; }
+        @media (max-width: 480px) { .container { padding: 5px; } .header h1 { font-size: 24px; } .stats-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Solana Rug Checker</h1>
+            <p style="color: #aaa; font-size: 14px;">Analyze token holder distribution</p>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="tokenInput" placeholder="Paste token mint address...">
+            <button onclick="analyzeToken()">Check</button>
+        </div>
+
+        <div class="error" id="error"></div>
+        <div class="risk-banner" id="riskBanner"></div>
+
+        <div class="stats-grid" id="statsGrid" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-label">Top Holder %</div>
+                <div class="stat-value" id="topHolderPercent">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Top 10 %</div>
+                <div class="stat-value" id="top10Percent">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Holder Count</div>
+                <div class="stat-value" id="holderCount">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Risk Level</div>
+                <div class="stat-value" id="riskLevel">-</div>
+            </div>
+        </div>
+
+        <div id="loadingContainer" class="loading" style="display: none;">
+            ⏳ Fetching holder data...
+        </div>
+
+        <div class="chart-container" id="chartContainer" style="display: none;">
+            <div id="bubbleChart"></div>
+        </div>
+
+        <div class="holders-list" id="holdersList" style="display: none;">
+            <div class="title-row"><h2>Top Holders</h2></div>
+            <div id="holdersContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        const HELIUS_API_KEY = "9e9f9434-e0af-41a4-b373-9f3310508204";
+
+        async function analyzeToken() {
+            const tokenMint = document.getElementById("tokenInput").value.trim();
+            if (!tokenMint || tokenMint.length < 30) {
+                showError("Please enter a valid token mint address");
+                return;
+            }
+
+            document.getElementById("loadingContainer").style.display = "block";
+            document.getElementById("error").style.display = "none";
+            document.getElementById("statsGrid").style.display = "none";
+            document.getElementById("chartContainer").style.display = "none";
+            document.getElementById("holdersList").style.display = "none";
+
+            try {
+                const response = await fetch(
+                    `https://api.helius.xyz/v0/token/${tokenMint}?api-key=${HELIUS_API_KEY}`
+                );
+
+                if (!response.ok) {
+                    throw new Error("Token not found or API limit reached.");
+                }
+
+                const data = await response.json();
+                const holders = data.result || [];
+
+                if (holders.length === 0) {
+                    throw new Error("No holder data found");
+                }
+
+                holders.sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount));
+
+                const totalSupply = holders.reduce((sum, h) => parseFloat(h.amount || 0), 0);
+                const topHolder = parseFloat(holders[0].amount) / totalSupply;
+                const top10Sum = holders.slice(0, 10).reduce((sum, h) => parseFloat(h.amount || 0), 0);
+                const top10Percent = top10Sum / totalSupply;
+
+                let riskLevel = "🟢 LOW";
+                let riskClass = "low";
+                let riskColor = "#00dd00";
+
+                if (topHolder > 0.7) {
+                    riskLevel = "🔴 CRITICAL";
+                    riskClass = "high";
+                    riskColor = "#ff4444";
+                } else if (topHolder > 0.5) {
+                    riskLevel = "🔴 HIGH";
+                    riskClass = "high";
+                    riskColor = "#ff4444";
+                } else if (topHolder > 0.3) {
+                    riskLevel = "🟠 MEDIUM";
+                    riskClass = "medium";
+                    riskColor = "#ffaa00";
+                } else if (topHolder > 0.15) {
+                    riskLevel = "🟡 CAUTION";
+                    riskClass = "medium";
+                    riskColor = "#ffaa00";
+                }
+
+                document.getElementById("topHolderPercent").textContent = (topHolder * 100).toFixed(2) + "%";
+                document.getElementById("top10Percent").textContent = (top10Percent * 100).toFixed(2) + "%";
+                document.getElementById("holderCount").textContent = holders.length;
+                document.getElementById("riskLevel").textContent = riskLevel;
+                document.getElementById("statsGrid").style.display = "grid";
+
+                const banner = document.getElementById("riskBanner");
+                banner.className = "risk-banner " + riskClass;
+                banner.textContent = riskLevel + " - " + (topHolder > 0.3 ? "⚠️ POTENTIAL RUG RISK" : "✅ LOOKS LEGITIMATE");
+                banner.style.display = "block";
+
+                createBubbleChart(holders, totalSupply, riskColor);
+                displayHolders(holders, totalSupply);
+
+                document.getElementById("loadingContainer").style.display = "none";
+
+            } catch (error) {
+                showError(error.message || "Error fetching data");
+                document.getElementById("loadingContainer").style.display = "none";
+            }
+        }
+
+        function createBubbleChart(holders, totalSupply, mainColor) {
+            const topHolders = holders.slice(0, 20);
+            const x = topHolders.map((h, i) => i + 1);
+            const y = topHolders.map(h => (parseFloat(h.amount) / totalSupply) * 100);
+            const sizes = topHolders.map(h => parseFloat(h.amount) / totalSupply * 100);
+            const colors = topHolders.map((h, i) => i === 0 ? "#ff4444" : i < 5 ? "#ffaa00" : mainColor);
+
+            const trace = {
+                x: x, y: y, mode: 'markers',
+                marker: { size: sizes, color: colors, opacity: 0.7, line: { color: '#fff', width: 1 } },
+                text: topHolders.map((h, i) => `Holder ${i + 1}<br>${(parseFloat(h.amount) / totalSupply * 100).toFixed(2)}%<br>${h.address.slice(0, 8)}...`),
+                hoverinfo: 'text', type: 'scatter'
+            };
+
+            const layout = {
+                title: 'Top 20 Holders Distribution',
+                xaxis: { title: 'Holder Rank', color: '#aaa', gridcolor: '#333' },
+                yaxis: { title: 'Ownership %', color: '#aaa', gridcolor: '#333' },
+                plot_bgcolor: 'rgba(0,0,0,0.2)',
+                paper_bgcolor: 'rgba(26,26,46,0)',
+                font: { color: '#fff', size: 12 },
+                margin: { l: 50, r: 20, t: 40, b: 50 },
+                hovermode: 'closest'
+            };
+
+            Plotly.newPlot('bubbleChart', [trace], layout, { responsive: true });
+            document.getElementById("chartContainer").style.display = "block";
+        }
+
+        function displayHolders(holders, totalSupply) {
+            const container = document.getElementById("holdersContainer");
+            container.innerHTML = holders.slice(0, 15).map((holder, i) => {
+                const percent = (parseFloat(holder.amount) / totalSupply) * 100;
+                return `<div class="holder-item"><div class="holder-address">#${i + 1} ${holder.address.slice(0, 12)}...</div><div class="holder-bar"><div class="holder-fill" style="width: ${Math.min(percent, 100)}%"></div></div><div class="holder-percent">${percent.toFixed(2)}%</div></div>`;
+            }).join("");
+            document.getElementById("holdersList").style.display = "block";
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById("error");
+            errorDiv.textContent = "❌ " + message;
+            errorDiv.style.display = "block";
+        }
+
+        document.getElementById("tokenInput").addEventListener("keypress", (e) => {
+            if (e.key === "Enter") analyzeToken();
+        });
+    </script>
+</body>
+</html>
