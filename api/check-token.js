@@ -3,12 +3,20 @@
 // Set SOLANA_RPC_URL (e.g. a Helius/QuickNode URL) for higher rate limits.
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
-async function rpc(method, params) {
+async function rpc(method, params, attempt = 0) {
     const response = await fetch(RPC_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
     });
+    // The public RPC rate-limits heavily (especially getTokenLargestAccounts); back off and retry.
+    if (response.status === 429 && attempt < 3) {
+        await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+        return rpc(method, params, attempt + 1);
+    }
+    if (response.status === 429) {
+        throw new Error('Solana RPC is rate-limiting requests. Try again shortly, or set SOLANA_RPC_URL to a dedicated RPC (e.g. Helius free tier).');
+    }
     if (!response.ok) {
         throw new Error(`RPC ${method} failed with HTTP ${response.status}`);
     }
@@ -27,11 +35,12 @@ export default async function handler(req, res) {
     }
 
     try {
-        const [mintInfo, supplyInfo, largest] = await Promise.all([
+        const [mintInfo, supplyInfo] = await Promise.all([
             rpc('getAccountInfo', [tokenAddress, { encoding: 'jsonParsed' }]),
-            rpc('getTokenSupply', [tokenAddress]),
-            rpc('getTokenLargestAccounts', [tokenAddress])
+            rpc('getTokenSupply', [tokenAddress])
         ]);
+        // Run separately: it is the most rate-limited call, so don't burst it alongside the others.
+        const largest = await rpc('getTokenLargestAccounts', [tokenAddress]);
 
         const parsed = mintInfo?.value?.data?.parsed;
         if (!parsed || parsed.type !== 'mint') {
