@@ -310,8 +310,8 @@
                     <div class="stat-value" id="top10">-</div>
                 </div>
                 <div class="stat">
-                    <div class="stat-label">Holder Count</div>
-                    <div class="stat-value" id="holderCount">-</div>
+                    <div class="stat-label">Mint / Freeze Authority</div>
+                    <div class="stat-value" id="authorities">-</div>
                 </div>
                 <div class="stat">
                     <div class="stat-label">Risk Level</div>
@@ -324,7 +324,7 @@
             </div>
 
             <div class="holders-list">
-                <div class="holders-title">Top 15 Holders</div>
+                <div class="holders-title">Top 15 Holders (% of supply)</div>
                 <div id="holdersList"></div>
             </div>
         </div>
@@ -349,35 +349,29 @@
             loadingDiv.style.display = 'block';
 
             try {
-                const response = await fetch(`/api/check-token?tokenAddress=${tokenInput}`);
+                const response = await fetch(`/api/check-token?tokenAddress=${encodeURIComponent(tokenInput)}`);
+                const data = await response.json().catch(() => ({}));
 
                 if (!response.ok) {
-                    throw new Error('Token not found');
+                    throw new Error(data.error || `Request failed (${response.status})`);
                 }
 
-                const { tokenData, holdersData } = await response.json();
-                displayResults(tokenData, holdersData, tokenInput);
+                displayResults(data);
             } catch (error) {
                 loadingDiv.style.display = 'none';
-                errorDiv.innerHTML = `❌ Token not found or API error.`;
+                errorDiv.textContent = `❌ ${error.message}`;
                 errorDiv.style.display = 'flex';
             }
         }
 
-        function displayResults(tokenData, holdersData, tokenAddress) {
+        function displayResults(data) {
             const loadingDiv = document.getElementById('loading');
             const resultsDiv = document.getElementById('results');
 
             loadingDiv.style.display = 'none';
 
-            const holders = holdersData.data?.length || 0;
-            const holdersList = holdersData.data || [];
-            
-            let totalBalance = holdersList.reduce((sum, h) => sum + parseFloat(h.amount || 0), 0);
-            const holdersWithPercent = holdersList.map((h, i) => ({
-                ...h,
-                percentage: (parseFloat(h.amount || 0) / totalBalance) * 100
-            }));
+            // Percentages are of total supply, computed server-side.
+            const holdersWithPercent = data.holders || [];
 
             const topHolder = holdersWithPercent.length > 0 ? holdersWithPercent[0].percentage : 0;
             const top10 = holdersWithPercent.slice(0, 10).reduce((sum, h) => sum + h.percentage, 0);
@@ -404,9 +398,17 @@
                 riskEmoji = '🟡';
             }
 
+            // An active mint or freeze authority lets the dev print tokens or freeze wallets.
+            if ((data.mintAuthority || data.freezeAuthority) && (riskLevel === 'LOW' || riskLevel === 'CAUTION')) {
+                riskLevel = 'MEDIUM';
+                riskClass = 'risk-medium';
+                riskEmoji = '🟡';
+            }
+
             document.getElementById('topHolder').textContent = topHolder.toFixed(2) + '%';
             document.getElementById('top10').textContent = top10.toFixed(2) + '%';
-            document.getElementById('holderCount').textContent = holders.toLocaleString();
+            document.getElementById('authorities').textContent =
+                `${data.mintAuthority ? '⚠️ On' : '✅ Off'} / ${data.freezeAuthority ? '⚠️ On' : '✅ Off'}`;
             document.getElementById('riskLevel').textContent = riskEmoji + ' ' + riskLevel;
 
             const riskBadge = document.getElementById('riskBadge');
@@ -445,9 +447,9 @@
             holdersListDiv.innerHTML = top20Holders.slice(0, 15).map((holder, idx) => `
                 <div class="holder-item">
                     <div>
-                        <div class="holder-address">${(holder.owner || holder.address || '').substring(0, 10)}...${(holder.owner || holder.address || '').substring(-10)}</div>
+                        <div class="holder-address">${holder.owner.slice(0, 6)}...${holder.owner.slice(-6)}</div>
                         <div class="percentage-bar">
-                            <div class="percentage-fill" style="width: ${holder.percentage}%"></div>
+                            <div class="percentage-fill" style="width: ${Math.min(holder.percentage, 100)}%"></div>
                         </div>
                     </div>
                     <div class="holder-percentage">${holder.percentage.toFixed(2)}%</div>
