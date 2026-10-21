@@ -1,9 +1,9 @@
-// Simulated positions: buys at the live curve price when a coin passes the
-// filters, then exits on take-profit, stop-loss, timeout or graduation.
+// Simulated positions: buys when a coin gives an entry signal, then exits on
+// take-profit, stop-loss or timeout. Prices come from the live trade stream
+// (bonding curve or PumpSwap), so a coin that graduates keeps being tracked.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { rpc } from '../lib/solana.mjs';
-import { decodeBondingCurve, quoteBuy, quoteSell } from './pumpfun.js';
+import { quoteBuy, TOKEN_DECIMALS } from './pumpfun.js';
 
 export class PaperTrader {
     constructor(cfg, logDir) {
@@ -12,47 +12,55 @@ export class PaperTrader {
         this.closed = [];
         mkdirSync(logDir, { recursive: true });
         this.logFile = join(logDir, 'trades.jsonl');
-        this.timer = setInterval(() => this.poll().catch(e => console.error(`[paper] poll failed: ${e.message}`)), cfg.pollMs);
+        this.timer = setInterval(() => this.checkExits(), cfg.pollMs);
     }
 
     get full() { return this.positions.size >= this.cfg.maxOpen; }
 
     log(entry) { appendFileSync(this.logFile, JSON.stringify({ time: new Date().toISOString(), ...entry }) + '\n'); }
 
-    open(launch, curve) {
-        const tokens = quoteBuy(curve, this.cfg.buySol, this.cfg.feeBps);
-        if (tokens <= 0n) return;
-        const pos = { mint: launch.mint, symbol: launch.symbol, bondingCurve: launch.bondingCurve, tokens, costSol: this.cfg.buySol, openedAt: Date.now() };
+    // On the bonding curve the fill includes price impact; on PumpSwap (deep enough
+    // for a small size) it is the last trade price less the fee.
+    open(launch, { curve, price, venue }) {
+        let tokens;
+        if (curve && !curve.complete) tokens = Number(quoteBuy(curve, this.cfg.buySol, this.cfg.feeBps)) / 10 ** TOKEN_DECIMALS;
+        else if (price > 0) tokens = this.cfg.buySol * (1 - this.cfg.feeBps / 10_000) / price;
+        if (!tokens) return;
+        const pos = { mint: launch.mint, symbol: launch.symbol, venue, tokens, costSol: this.cfg.buySol, lastPrice: price, openedAt: Date.now() };
         this.positions.set(launch.mint, pos);
-        this.log({ event: 'open', mint: pos.mint, symbol: pos.symbol, costSol: pos.costSol, tokens: pos.tokens.toString() });
-        console.log(`[paper] BUY ${pos.symbol} ${pos.mint} for ${pos.costSol} SOL`);
+        this.log({ event: 'open', mint: pos.mint, symbol: pos.symbol, venue, costSol: pos.costSol, tokens, price });
+        console.log(`[paper] BUY ${pos.symbol} ${pos.mint} on ${venue} for ${pos.costSol} SOL`);
     }
 
-    async poll() {
-        if (!this.positions.size) return;
-        const list = [...this.positions.values()];
-        const infos = await rpc('getMultipleAccounts', [list.map(p => p.bondingCurve), { encoding: 'base64' }]);
-        list.forEach((pos, i) => {
-            const data = infos.value[i]?.data?.[0];
-            if (!data) return;
-            const curve = decodeBondingCurve(data);
-            // A graduated curve can't be sold into here; value the bag at the last curve price.
-            const value = quoteSell(curve, pos.tokens, this.cfg.feeBps);
+    onPrice(mint, price, venue) {
+        const pos = this.positions.get(mint);
+        if (!pos) return;
+        pos.lastPrice = price;
+        if (venue !== pos.venue) {
+            console.log(`[paper] ${pos.symbol} graduated, now pricing on ${venue}`);
+            pos.venue = venue;
+        }
+    }
+
+    value(pos) { return pos.tokens * (pos.lastPrice || 0) * (1 - this.cfg.feeBps / 10_000); }
+
+    checkExits() {
+        for (const pos of [...this.positions.values()]) {
+            const value = this.value(pos);
             const pnlPct = (value / pos.costSol - 1) * 100;
             let reason = null;
-            if (curve.complete) reason = 'graduated';
-            else if (pnlPct >= this.cfg.takeProfitPct) reason = 'take-profit';
-            else if (pnlPct <= -this.cfg.stopLossPct) reason = 'stop-loss';
+            if (pos.lastPrice && pnlPct >= this.cfg.takeProfitPct) reason = 'take-profit';
+            else if (pos.lastPrice && pnlPct <= -this.cfg.stopLossPct) reason = 'stop-loss';
             else if (Date.now() - pos.openedAt >= this.cfg.maxHoldMs) reason = 'timeout';
             if (reason) this.close(pos, value, reason);
-        });
+        }
     }
 
     close(pos, valueSol, reason) {
         this.positions.delete(pos.mint);
         const pnlSol = valueSol - pos.costSol;
         this.closed.push(pnlSol);
-        this.log({ event: 'close', mint: pos.mint, symbol: pos.symbol, reason, valueSol, pnlSol, heldSec: Math.round((Date.now() - pos.openedAt) / 1000) });
+        this.log({ event: 'close', mint: pos.mint, symbol: pos.symbol, venue: pos.venue, reason, valueSol, pnlSol, heldSec: Math.round((Date.now() - pos.openedAt) / 1000) });
         console.log(`[paper] SELL ${pos.symbol} (${reason}) ${pnlSol >= 0 ? '+' : ''}${pnlSol.toFixed(4)} SOL`);
     }
 

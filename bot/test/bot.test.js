@@ -68,7 +68,7 @@ test('findClusters groups fresh wallets by funder and links the dev', () => {
 test('evaluate passes a clean launch and lists every failed rule', () => {
     const f = { maxDevBuyPct: 5, rejectIfDevSold: true, maxEarlyBuys: 3, maxTopHolderPct: 10, maxTop10Pct: 30, minRealSol: 1, requireSocials: true, maxSharedFunder: 2 };
     const clean = {
-        curve: freshCurve, realSol: 5, devBuyPct: 2, devSold: false, earlyBuys: 1, topHolderPct: 4, top10Pct: 20, socials: true,
+        venue: 'curve', liquidityFound: true, curve: freshCurve, realSol: 5, devBuyPct: 2, devSold: false, earlyBuys: 1, topHolderPct: 4, top10Pct: 20, socials: true,
         clusters: { largest: { funder: 'B', wallets: ['a'] }, devLinked: [] }
     };
     assert.deepEqual(evaluate(clean, f), { pass: true, reasons: [] });

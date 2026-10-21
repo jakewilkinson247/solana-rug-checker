@@ -2,6 +2,7 @@
 // work; evaluate() is a pure function so the rules are easy to test and tune.
 import { rpc, isOnCurve } from '../lib/solana.mjs';
 import { decodeBondingCurve, TOTAL_SUPPLY_RAW } from './pumpfun.js';
+import { decodePool } from './pumpswap.js';
 
 const pct = raw => Number(raw) / Number(TOTAL_SUPPLY_RAW) * 100;
 
@@ -49,23 +50,38 @@ export function findClusters(fundings, dev, launchTime, freshHours) {
     return { largest, devLinked };
 }
 
+// SOL backing the coin: the bonding curve's real reserves, or the PumpSwap pool's SOL vault.
+async function liquidity(launch) {
+    if (launch.pool) {
+        const info = await rpc('getAccountInfo', [launch.pool, { encoding: 'base64' }]);
+        if (!info?.value) return { found: false, realSol: 0 };
+        const { quoteVault } = decodePool(info.value.data[0]);
+        const balance = await rpc('getTokenAccountBalance', [quoteVault]);
+        return { found: true, realSol: Number(balance.value.uiAmountString) };
+    }
+    const info = await rpc('getAccountInfo', [launch.bondingCurve, { encoding: 'base64' }]);
+    if (!info?.value) return { found: false, realSol: 0 };
+    const curve = decodeBondingCurve(info.value.data[0]);
+    return { found: true, curve, realSol: Number(curve.realSolReserves) / 1e9 };
+}
+
 export async function gatherMetrics(launch, f) {
-    const [curveInfo, largest, sigs, devAccounts] = await Promise.all([
-        rpc('getAccountInfo', [launch.bondingCurve, { encoding: 'base64' }]),
+    const [liq, largest, sigs, devAccounts] = await Promise.all([
+        liquidity(launch),
         rpc('getTokenLargestAccounts', [launch.mint]),
         rpc('getSignaturesForAddress', [launch.mint, { limit: 1000 }]),
         rpc('getTokenAccountsByOwner', [launch.user, { mint: launch.mint }, { encoding: 'jsonParsed' }])
     ]);
-    const curve = curveInfo?.value ? decodeBondingCurve(curveInfo.value.data[0]) : null;
 
-    // Resolve token accounts to owner wallets and drop the bonding curve's own account.
+    // Resolve token accounts to owner wallets and drop the curve's and pool's own accounts.
+    const liquidityOwners = new Set([launch.bondingCurve, launch.pool].filter(Boolean));
     const accounts = largest.value || [];
     const owners = accounts.length
         ? await rpc('getMultipleAccounts', [accounts.map(a => a.address), { encoding: 'jsonParsed' }])
         : { value: [] };
     const holders = accounts
         .map((a, i) => ({ owner: owners.value[i]?.data?.parsed?.info?.owner || a.address, pct: pct(BigInt(a.amount)) }))
-        .filter(h => h.owner !== launch.bondingCurve && h.pct > 0);
+        .filter(h => !liquidityOwners.has(h.owner) && h.pct > 0);
 
     // Other transactions that landed in the creation slot or the next one: snipers / bundles.
     const oldest = sigs[sigs.length - 1];
@@ -91,8 +107,10 @@ export async function gatherMetrics(launch, f) {
     }
 
     return {
-        curve,
-        realSol: curve ? Number(curve.realSolReserves) / 1e9 : 0,
+        venue: launch.pool ? 'pumpswap' : 'curve',
+        liquidityFound: liq.found,
+        curve: liq.curve || null,
+        realSol: liq.realSol,
         devBuyPct: pct(launch.devBuyRaw),
         devHeldPct: pct(devHeldRaw),
         devSold: launch.devBuyRaw > 0n && devHeldRaw * 2n < launch.devBuyRaw,
@@ -106,8 +124,8 @@ export async function gatherMetrics(launch, f) {
 
 export function evaluate(m, f) {
     const reasons = [];
-    if (!m.curve) reasons.push('bonding curve not found');
-    else if (m.curve.complete) reasons.push('already graduated off the bonding curve');
+    if (!m.liquidityFound) reasons.push(m.venue === 'pumpswap' ? 'PumpSwap pool not found' : 'bonding curve not found');
+    else if (m.curve?.complete) reasons.push('curve complete but its PumpSwap pool has not been seen');
     if (m.devBuyPct > f.maxDevBuyPct) reasons.push(`dev bought ${m.devBuyPct.toFixed(1)}% at launch (max ${f.maxDevBuyPct}%)`);
     if (f.rejectIfDevSold && m.devSold) reasons.push('dev has already sold most of their bag');
     if (m.earlyBuys !== null && m.earlyBuys > f.maxEarlyBuys) reasons.push(`${m.earlyBuys} buys in the launch slot (max ${f.maxEarlyBuys})`);

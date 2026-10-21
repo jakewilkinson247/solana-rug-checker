@@ -26,8 +26,13 @@ class Reader {
 
 function decodeCreate(r) {
     const e = { name: r.string(), symbol: r.string(), uri: r.string(), mint: r.pubkey(), bondingCurve: r.pubkey(), user: r.pubkey() };
-    // Newer program versions also log the creator (who receives creator fees).
+    // Newer program versions also log the creator (who receives creator fees), then
+    // timestamp, four reserve/supply u64s, token program and two flags before the quote mint.
     e.creator = r.has(32) ? r.pubkey() : e.user;
+    if (r.has(8 * 5 + 32 + 2 + 32)) {
+        r.o += 8 * 5 + 32 + 2;
+        e.quoteMint = r.pubkey();
+    }
     return e;
 }
 

@@ -9,6 +9,11 @@ export const config = {
     rpcUrl,
     wsUrl: process.env.SOLANA_WS_URL || rpcUrl.replace(/^http/, 'ws'),
 
+    // PumpSwap: follow coins that graduate off the bonding curve onto their pool, and
+    // (WATCH_PUMPSWAP_POOLS) treat new PumpSwap pools for pump.fun coins as candidates too.
+    watchPumpSwap: bool('WATCH_PUMPSWAP', true),
+    watchPumpSwapPools: bool('WATCH_PUMPSWAP_POOLS', true),
+
     // How long to let a coin trade before judging it; holders and snipers need time to show up.
     checkDelayMs: num('CHECK_DELAY_MS', 20_000),
     maxConcurrentChecks: num('MAX_CONCURRENT_CHECKS', 2),
@@ -58,7 +63,7 @@ export const config = {
         stopLossPct: num('STOP_LOSS_PCT', 30),
         maxHoldMs: num('MAX_HOLD_MINUTES', 30) * 60_000,
         maxOpen: num('MAX_OPEN_POSITIONS', 5),
-        pollMs: num('PRICE_POLL_MS', 5_000)
+        pollMs: num('EXIT_CHECK_MS', 2_000)
     },
 
     logDir: process.env.LOG_DIR || new URL('./logs/', import.meta.url).pathname

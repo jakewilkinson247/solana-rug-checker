@@ -3,7 +3,7 @@ Solana token rug pull detector
 
 ## Sniper bot (filtered, paper trading)
 
-`bot/` watches pump.fun for new coins, waits `CHECK_DELAY_MS`, runs each one
+`bot/` watches pump.fun and PumpSwap for new coins, waits `CHECK_DELAY_MS`, runs each one
 through rug/sniper filters, and **paper-trades** the ones that pass. No wallet
 and no real SOL: it logs simulated buys and sells at the live bonding-curve
 price, so you can tune the filters before risking anything.
@@ -34,6 +34,20 @@ A coin is rejected if any of these trip (all thresholds are env vars):
 | Twitter/Telegram/website in the metadata | `REQUIRE_SOCIALS` (false) |
 | Fresh top holders sharing one funding wallet (bundled sub-wallets) | `MAX_SHARED_FUNDER` (2), `CLUSTER_HOLDERS` (8), `FRESH_WALLET_HOURS` (24), `CLUSTER_CHECK` (true) |
 | Any holder funded by the dev, or by the dev's own funder | part of `CLUSTER_CHECK` |
+
+### PumpSwap
+
+With `WATCH_PUMPSWAP` (true) the bot also subscribes to PumpSwap, pump.fun's AMM:
+
+- A coin being checked, watched or held that **graduates** off the bonding curve
+  keeps being tracked on its PumpSwap pool; its trade history carries straight on.
+- With `WATCH_PUMPSWAP_POOLS` (true), every **new PumpSwap pool** for a pump.fun
+  coin paired with SOL is a new candidate. It goes through the same filters (the
+  pool's own account is excluded from the holder checks, and `MIN_REAL_SOL` is
+  the SOL in the pool), and the retest pattern is measured from the pool's first trade.
+
+PumpSwap carries a lot of trading, so this subscription uses noticeably more
+bandwidth than pump.fun alone. Set `WATCH_PUMPSWAP=false` to turn it off.
 
 ### Entry: retest of support, confirmed by volume
 
@@ -67,8 +81,9 @@ filters run again in case the dev or a whale dumped in the meantime.
 ### Paper trading
 
 `PAPER_BUY_SOL` (0.1) per entry, up to `MAX_OPEN_POSITIONS` (5). Exits on
-`TAKE_PROFIT_PCT` (100), `STOP_LOSS_PCT` (30), `MAX_HOLD_MINUTES` (30), or when
-the coin graduates off the curve. Every decision goes to `bot/logs/decisions.jsonl`
+`TAKE_PROFIT_PCT` (100), `STOP_LOSS_PCT` (30) or `MAX_HOLD_MINUTES` (30).
+Positions are priced from the live trade stream, so a coin that graduates mid-trade
+keeps being tracked on PumpSwap. Every decision goes to `bot/logs/decisions.jsonl`
 (with the metrics, so you can see why coins failed) and every trade to
 `bot/logs/trades.jsonl`. Ctrl+C prints the net result.
 
