@@ -22,6 +22,11 @@ export const config = {
     maxQueue: num('MAX_QUEUE', 20),
 
     filters: {
+        // Checked from the trade stream before any RPC calls.
+        minBuyers: num('MIN_BUYERS', 5),                  // distinct buyers besides the dev by check time
+        minBuySol: num('MIN_BUY_SOL', 1),
+        maxSameName: num('MAX_SAME_NAME', 2),             // launches with the same symbol...
+        copycatMinutes: num('COPYCAT_MINUTES', 30),       // ...within this window
         maxDevBuyPct: num('MAX_DEV_BUY_PCT', 5),
         rejectIfDevSold: bool('REJECT_IF_DEV_SOLD', true),
         maxEarlyBuys: num('MAX_EARLY_BUYS', 3),          // other txs in the creation slot or the next

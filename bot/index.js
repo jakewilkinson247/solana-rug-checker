@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { config } from './config.js';
 import { PUMP_PROGRAM, parseLogs, curvePrice } from './pumpfun.js';
 import { PUMPSWAP_PROGRAM, isSolQuote, parseSwapLogs } from './pumpswap.js';
-import { gatherMetrics, evaluate } from './filters.js';
+import { gatherMetrics, evaluate, prefilter } from './filters.js';
 import { analyze } from './strategy.js';
 import { PaperTrader } from './paper.js';
 
@@ -21,6 +21,8 @@ const trader = new PaperTrader(config.paper, config.logDir);
 const coins = new Map();
 // PumpSwap pool -> { mint, decimals } for coins we track; swap events only name the pool.
 const pools = new Map();
+// Symbol -> launch times, for spotting the same name launched over and over.
+const launchesByName = new Map();
 const queue = [];
 let running = 0;
 const stats = { seen: 0, passed: 0, rejected: 0, dropped: 0, errors: 0, watching: 0, entries: 0, died: 0, expired: 0, graduated: 0 };
@@ -33,6 +35,10 @@ function onLaunch(launch) {
     stats.seen++;
     if (queue.length >= config.maxQueue) { stats.dropped++; return; }
     coins.set(launch.mint, { launch, trades: [], state: 'checking', watchUntil: 0 });
+    if (!launch.pool) {
+        const name = launch.symbol.trim().toLowerCase();
+        launchesByName.set(name, [...(launchesByName.get(name) || []), Date.now()]);
+    }
     const detail = launch.pool ? 'new PumpSwap pool' : `dev buy ${(Number(launch.devBuyRaw) / 1e13).toFixed(1)}%`;
     console.log(`[new] ${launch.symbol} ${launch.mint} (${detail})`);
     setTimeout(() => { queue.push(launch); drain(); }, config.checkDelayMs);
@@ -74,8 +80,22 @@ function drain() {
     }
 }
 
+function sameNameCount(launch) {
+    if (launch.pool) return 0; // pool candidates have no symbol from the log stream
+    const since = Date.now() - config.filters.copycatMinutes * 60_000;
+    return (launchesByName.get(launch.symbol.trim().toLowerCase()) || []).filter(t => t >= since).length;
+}
+
 async function check(launch) {
     const coin = coins.get(launch.mint);
+    const pre = prefilter(coin.trades, launch, sameNameCount(launch), config.filters);
+    if (!pre.pass) {
+        stats.rejected++;
+        coins.delete(launch.mint);
+        logDecision({ stage: 'prefilter', mint: launch.mint, symbol: launch.symbol, pass: false, reasons: pre.reasons });
+        console.log(`[reject] ${launch.symbol}: ${pre.reasons.join('; ')}`);
+        return;
+    }
     try {
         const metrics = await gatherMetrics(launch, config.filters);
         const { pass, reasons } = evaluate(metrics, config.filters);
@@ -199,7 +219,14 @@ function connect(attempt = 0) {
 }
 
 if (config.entryMode === 'retest') setInterval(evaluateWatchlist, config.entry.evalMs);
-setInterval(() => { for (const [pool, { mint }] of pools) if (!tracked(mint)) pools.delete(pool); }, 10_000);
+setInterval(() => {
+    for (const [pool, { mint }] of pools) if (!tracked(mint)) pools.delete(pool);
+    const since = Date.now() - config.filters.copycatMinutes * 60_000;
+    for (const [name, times] of launchesByName) {
+        const recent = times.filter(t => t >= since);
+        if (recent.length) launchesByName.set(name, recent); else launchesByName.delete(name);
+    }
+}, 10_000);
 
 setInterval(() => console.log(
     `[stats] seen ${stats.seen}, passed ${stats.passed}, rejected ${stats.rejected}, dropped ${stats.dropped}, errors ${stats.errors}` +

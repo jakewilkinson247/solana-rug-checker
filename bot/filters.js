@@ -122,6 +122,20 @@ export async function gatherMetrics(launch, f) {
     };
 }
 
+// Cheap checks on the trades already seen in the log stream, run before any RPC calls so
+// dead or spam launches don't use up RPC credits. sameName counts launches with this
+// symbol in the copycat window (including this one).
+export function prefilter(trades, launch, sameName, f) {
+    const reasons = [];
+    const buys = trades.filter(t => t.isBuy && t.user !== launch.user);
+    const buyers = new Set(buys.map(t => t.user)).size;
+    const buySol = buys.reduce((s, t) => s + t.sol, 0);
+    if (buyers < f.minBuyers) reasons.push(`only ${buyers} buyer(s) besides the dev (min ${f.minBuyers})`);
+    if (buySol < f.minBuySol) reasons.push(`only ${buySol.toFixed(2)} SOL bought (min ${f.minBuySol})`);
+    if (sameName > f.maxSameName) reasons.push(`${sameName} launches named "${launch.symbol}" in ${f.copycatMinutes} min (spam/copycat)`);
+    return { pass: reasons.length === 0, reasons };
+}
+
 export function evaluate(m, f) {
     const reasons = [];
     if (!m.liquidityFound) reasons.push(m.venue === 'pumpswap' ? 'PumpSwap pool not found' : 'bonding curve not found');

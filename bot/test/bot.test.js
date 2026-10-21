@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { base58Encode } from '../../lib/solana.mjs';
 import { parseLogs, decodeBondingCurve, curvePrice, quoteBuy, quoteSell } from '../pumpfun.js';
-import { evaluate, findClusters } from '../filters.js';
+import { evaluate, findClusters, prefilter } from '../filters.js';
 
 const disc = name => createHash('sha256').update(`event:${name}`).digest().subarray(0, 8);
 const key = n => Buffer.alloc(32, n);
@@ -83,4 +83,18 @@ test('evaluate passes a clean launch and lists every failed rule', () => {
 
     // Unknown early-buy count (too much activity to page back) doesn't fail on its own.
     assert.equal(evaluate({ ...clean, earlyBuys: null }, f).pass, true);
+});
+
+test('prefilter skips dead and copycat launches before any RPC calls', () => {
+    const f = { minBuyers: 5, minBuySol: 1, maxSameName: 2, copycatMinutes: 30 };
+    const launch = { user: 'dev', symbol: 'c/acc' };
+    const buy = (user, sol) => ({ user, sol, isBuy: true });
+    const active = [buy('dev', 2), ...['a', 'b', 'c', 'd', 'e'].map(u => buy(u, 0.3)), { user: 'a', sol: 0.2, isBuy: false }];
+
+    assert.deepEqual(prefilter(active, launch, 1, f), { pass: true, reasons: [] });
+    // Only the dev bought: the spam pattern from the c/acc launches.
+    assert.deepEqual(prefilter([buy('dev', 2)], launch, 1, f).reasons, ['only 0 buyer(s) besides the dev (min 5)', 'only 0.00 SOL bought (min 1)']);
+    // Five buyers but dust amounts.
+    assert.match(prefilter(['a', 'b', 'c', 'd', 'e'].map(u => buy(u, 0.01)), launch, 1, f).reasons[0], /SOL bought/);
+    assert.match(prefilter(active, launch, 3, f).reasons[0], /3 launches named "c\/acc" in 30 min/);
 });

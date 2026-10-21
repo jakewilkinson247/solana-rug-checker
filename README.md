@@ -21,7 +21,17 @@ RPC calls, so the public endpoint will rate-limit it almost immediately.
 
 ### Filters
 
-A coin is rejected if any of these trip (all thresholds are env vars):
+First, two free checks on the trades already seen in the log stream, so dead
+and spam launches are skipped without spending any RPC credits:
+
+| Check | Env var (default) |
+|---|---|
+| Distinct buyers besides the dev by check time | `MIN_BUYERS` (5) |
+| SOL bought by them | `MIN_BUY_SOL` (1) |
+| Same symbol launched more than this many times... | `MAX_SAME_NAME` (2) |
+| ...within this many minutes (copycat/spam) | `COPYCAT_MINUTES` (30) |
+
+Then a coin is rejected if any of these trip (all thresholds are env vars):
 
 | Check | Env var (default) |
 |---|---|
