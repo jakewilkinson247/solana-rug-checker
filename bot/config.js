@@ -29,6 +29,28 @@ export const config = {
         freshWalletHours: num('FRESH_WALLET_HOURS', 24)
     },
 
+    // 'retest' watches coins that pass the filters and buys the bounce off support;
+    // 'immediate' buys as soon as a coin passes.
+    entryMode: process.env.ENTRY_MODE || 'retest',
+    entry: {
+        watchMinutes: num('WATCH_MINUTES', 60),
+        evalMs: num('EVAL_MS', 2_000),
+        minRunPct: num('MIN_RUN_PCT', 100),               // peak vs first trade price
+        minPullbackPct: num('MIN_PULLBACK_PCT', 25),      // from the peak
+        maxPullbackPct: num('MAX_PULLBACK_PCT', 65),
+        retestTolerancePct: num('RETEST_TOLERANCE_PCT', 10), // low must come within this of support
+        supportBreakPct: num('SUPPORT_BREAK_PCT', 20),    // this far below support = dead
+        minBouncePct: num('MIN_BOUNCE_PCT', 15),          // off the retest low
+        maxBouncePct: num('MAX_BOUNCE_PCT', 50),
+        minTotalVolSol: num('MIN_TOTAL_VOL_SOL', 30),
+        minTraders: num('MIN_TRADERS', 40),
+        maxWalletVolPct: num('MAX_WALLET_VOL_PCT', 20),
+        maxPullbackVolRatio: num('MAX_PULLBACK_VOL_RATIO', 0.8), // pullback vol/min vs run vol/min
+        minBounceVolSol: num('MIN_BOUNCE_VOL_SOL', 5),
+        minBounceBuyRatio: num('MIN_BOUNCE_BUY_RATIO', 1.3),
+        minRecentVolSol: num('MIN_RECENT_VOL_SOL', 1)     // last 60s, so the coin is still alive
+    },
+
     paper: {
         buySol: num('PAPER_BUY_SOL', 0.1),
         feeBps: num('FEE_BPS', 100),
