@@ -11,6 +11,9 @@ export const config = {
     rpcUrl,
     wsUrl: process.env.SOLANA_WS_URL || rpcUrl.replace(/^http/, 'ws'),
 
+    // Print every coin (new, rejected, dropped) instead of only watches, entries and trades.
+    verbose: bool('VERBOSE', false),
+
     // PumpSwap: follow coins that graduate off the bonding curve onto their pool, and
     // (WATCH_PUMPSWAP_POOLS) treat new PumpSwap pools for pump.fun coins as candidates too.
     watchPumpSwap: bool('WATCH_PUMPSWAP', true),

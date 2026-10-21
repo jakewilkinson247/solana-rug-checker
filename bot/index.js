@@ -27,6 +27,8 @@ const queue = [];
 let running = 0;
 const stats = { seen: 0, passed: 0, rejected: 0, dropped: 0, errors: 0, watching: 0, entries: 0, died: 0, expired: 0, graduated: 0 };
 
+// Quiet by default: only watches, entries and paper trades. VERBOSE=true shows every coin.
+const debug = config.verbose ? console.log : () => {};
 const logDecision = entry => appendFileSync(decisionsFile, JSON.stringify({ time: new Date().toISOString(), ...entry }) + '\n');
 const tracked = mint => coins.has(mint) || trader.positions.has(mint);
 const lastPrice = coin => coin.trades[coin.trades.length - 1]?.price;
@@ -40,7 +42,7 @@ function onLaunch(launch) {
         launchesByName.set(name, [...(launchesByName.get(name) || []), Date.now()]);
     }
     const detail = launch.pool ? 'new PumpSwap pool' : `dev buy ${(Number(launch.devBuyRaw) / 1e13).toFixed(1)}%`;
-    console.log(`[new] ${launch.symbol} ${launch.mint} (${detail})`);
+    debug(`[new] ${launch.symbol} ${launch.mint} (${detail})`);
     setTimeout(() => { queue.push(launch); drain(); }, config.checkDelayMs);
 }
 
@@ -58,7 +60,7 @@ function onPool(p, signature, slot) {
     if (coin) {
         stats.graduated++;
         coin.launch.pool = p.pool;
-        console.log(`[graduated] ${coin.launch.symbol} moved to PumpSwap, still tracking`);
+        debug(`[graduated] ${coin.launch.symbol} moved to PumpSwap, still tracking`);
     } else if (trader.positions.has(p.baseMint)) {
         stats.graduated++;
     } else if (config.watchPumpSwapPools) {
@@ -93,7 +95,7 @@ async function check(launch) {
         stats.rejected++;
         coins.delete(launch.mint);
         logDecision({ stage: 'prefilter', mint: launch.mint, symbol: launch.symbol, pass: false, reasons: pre.reasons });
-        console.log(`[reject] ${launch.symbol}: ${pre.reasons.join('; ')}`);
+        debug(`[reject] ${launch.symbol}: ${pre.reasons.join('; ')}`);
         return;
     }
     try {
@@ -103,7 +105,7 @@ async function check(launch) {
         if (!pass) {
             stats.rejected++;
             coins.delete(launch.mint);
-            console.log(`[reject] ${launch.symbol}: ${reasons.join('; ')}`);
+            debug(`[reject] ${launch.symbol}: ${reasons.join('; ')}`);
             return;
         }
         stats.passed++;
@@ -119,7 +121,7 @@ async function check(launch) {
     } catch (e) {
         stats.errors++;
         coins.delete(launch.mint);
-        console.error(`[error] ${launch.symbol}: ${e.message}`);
+        debug(`[error] ${launch.symbol}: ${e.message}`);
     }
 }
 
@@ -130,13 +132,13 @@ async function enter(coin, signal) {
         const metrics = await gatherMetrics(launch, { ...config.filters, clusterCheck: false, requireSocials: false });
         const { pass, reasons } = evaluate(metrics, config.filters);
         logDecision({ stage: 'entry', mint: launch.mint, symbol: launch.symbol, venue: metrics.venue, pass, reasons, signal });
-        if (!pass) { console.log(`[skip] ${launch.symbol} retest signal but filters now fail: ${reasons.join('; ')}`); return; }
+        if (!pass) { debug(`[skip] ${launch.symbol} retest signal but filters now fail: ${reasons.join('; ')}`); return; }
         stats.entries++;
         console.log(`[ENTRY] ${launch.symbol} ${launch.mint} on ${metrics.venue}: run ${signal.metrics.runPct.toFixed(0)}%, pulled back ${signal.metrics.pullbackPct.toFixed(0)}%, bounced ${signal.metrics.bouncePct.toFixed(0)}% on ${signal.metrics.bounceVol.toFixed(1)} SOL`);
         if (!trader.full && !trader.positions.has(launch.mint)) trader.open(launch, { curve: metrics.curve, price: lastPrice(coin), venue: metrics.venue });
     } catch (e) {
         stats.errors++;
-        console.error(`[error] ${launch.symbol} entry: ${e.message}`);
+        debug(`[error] ${launch.symbol} entry: ${e.message}`);
     }
 }
 
@@ -152,7 +154,7 @@ function evaluateWatchlist() {
             stats.died++;
             coins.delete(mint);
             logDecision({ stage: 'watch', mint, symbol: coin.launch.symbol, pass: false, reasons: [signal.reason], metrics: signal.metrics });
-            console.log(`[drop] ${coin.launch.symbol}: ${signal.reason}`);
+            debug(`[drop] ${coin.launch.symbol}: ${signal.reason}`);
         } else if (now >= coin.watchUntil) {
             stats.expired++;
             coins.delete(mint);
@@ -233,7 +235,7 @@ setInterval(() => console.log(
     (config.entryMode === 'retest' ? ` | watching ${stats.watching}, entries ${stats.entries}, died ${stats.died}, expired ${stats.expired}` : '') +
     (config.watchPumpSwap ? ` | graduated ${stats.graduated}` : '') +
     ` | ${trader.summary()}`
-), 60_000);
+), config.verbose ? 60_000 : 600_000);
 
 process.on('SIGINT', () => {
     trader.stop();

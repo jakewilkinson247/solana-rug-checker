@@ -14,6 +14,11 @@ SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY npm start
 npm test
 ```
 
+By default the console only shows coins being watched (`[watch]`), entries
+(`[ENTRY]`), paper buys and sells, and a summary every 10 minutes. Set
+`VERBOSE=true` to see every coin, including rejections. Everything is written
+to the log files either way.
+
 It needs a dedicated RPC with WebSocket support (Helius, QuickNode, etc.).
 pump.fun gets thousands of launches a day and each check makes roughly 10–25
 RPC calls, so the public endpoint will rate-limit it almost immediately.

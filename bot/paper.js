@@ -36,10 +36,7 @@ export class PaperTrader {
         const pos = this.positions.get(mint);
         if (!pos) return;
         pos.lastPrice = price;
-        if (venue !== pos.venue) {
-            console.log(`[paper] ${pos.symbol} graduated, now pricing on ${venue}`);
-            pos.venue = venue;
-        }
+        pos.venue = venue;
     }
 
     value(pos) { return pos.tokens * (pos.lastPrice || 0) * (1 - this.cfg.feeBps / 10_000); }
