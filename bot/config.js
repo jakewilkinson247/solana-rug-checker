@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 // All settings come from environment variables so the filters can be tuned
 // without code changes. See the "Sniper bot" section of the README.
 const num = (name, fallback) => (process.env[name] !== undefined && process.env[name] !== '' ? Number(process.env[name]) : fallback);
@@ -66,5 +68,5 @@ export const config = {
         pollMs: num('EXIT_CHECK_MS', 2_000)
     },
 
-    logDir: process.env.LOG_DIR || new URL('./logs/', import.meta.url).pathname
+    logDir: process.env.LOG_DIR || fileURLToPath(new URL('./logs/', import.meta.url))
 };
