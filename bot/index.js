@@ -6,7 +6,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from './config.js';
 import { PUMP_PROGRAM, parseLogs, curvePrice } from './pumpfun.js';
-import { PUMPSWAP_PROGRAM, WSOL_MINT, parseSwapLogs } from './pumpswap.js';
+import { PUMPSWAP_PROGRAM, isSolQuote, parseSwapLogs } from './pumpswap.js';
 import { gatherMetrics, evaluate } from './filters.js';
 import { analyze } from './strategy.js';
 import { PaperTrader } from './paper.js';
@@ -46,7 +46,7 @@ function onTrade(mint, trade, venue) {
 
 // A pump.fun coin's PumpSwap pool: either a coin we already track graduating, or a new candidate.
 function onPool(p, signature, slot) {
-    if (p.quoteMint !== WSOL_MINT || !p.baseMint.endsWith('pump')) return;
+    if (!isSolQuote(p.quoteMint) || !p.baseMint.endsWith('pump')) return;
     pools.set(p.pool, { mint: p.baseMint, decimals: p.baseDecimals });
     const coin = coins.get(p.baseMint);
     if (coin) {
@@ -142,14 +142,19 @@ function evaluateWatchlist() {
     stats.watching = [...coins.values()].filter(c => c.state === 'watching').length;
 }
 
+// A transaction that touches both programs (e.g. a graduation) arrives once per subscription.
+const recentSignatures = new Set();
+
 function onMessage(data) {
     const value = data.params?.result?.value;
-    if (!value || value.err) return;
+    if (!value || value.err || recentSignatures.has(value.signature)) return;
+    recentSignatures.add(value.signature);
+    if (recentSignatures.size > 20_000) recentSignatures.delete(recentSignatures.values().next().value);
     const slot = data.params.result.context.slot;
 
     const { creates, trades } = parseLogs(value.logs);
     for (const c of creates) {
-        if (c.quoteMint && c.quoteMint !== WSOL_MINT) continue; // prices assume SOL-quoted coins
+        if (c.quoteMint && !isSolQuote(c.quoteMint)) continue; // prices assume SOL-quoted coins
         const devBuy = trades.find(t => t.mint === c.mint && t.isBuy && t.user === c.user);
         onLaunch({
             ...c, signature: value.signature, slot,

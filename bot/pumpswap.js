@@ -5,6 +5,10 @@ import { base58Encode } from '../lib/solana.mjs';
 
 export const PUMPSWAP_PROGRAM = 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA';
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+// pump.fun marks SOL-quoted coins with the default (all-zero) key, wrapped SOL or
+// Token-2022 wrapped SOL (per isSolLikeQuoteMint in @pump-fun/pump-sdk).
+const SOL_QUOTE_MINTS = new Set(['11111111111111111111111111111111', WSOL_MINT, '9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP']);
+export const isSolQuote = mint => SOL_QUOTE_MINTS.has(mint);
 
 const discriminator = name => createHash('sha256').update(`event:${name}`).digest().subarray(0, 8);
 const CREATE_POOL_EVENT = discriminator('CreatePoolEvent');

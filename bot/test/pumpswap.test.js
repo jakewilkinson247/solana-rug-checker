@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { base58Encode, base58Decode } from '../../lib/solana.mjs';
-import { parseSwapLogs, decodePool, WSOL_MINT } from '../pumpswap.js';
+import { parseSwapLogs, decodePool, isSolQuote, WSOL_MINT } from '../pumpswap.js';
 import { PaperTrader } from '../paper.js';
 
 const disc = name => createHash('sha256').update(`event:${name}`).digest().subarray(0, 8);
@@ -70,4 +70,11 @@ test('paper positions keep pricing after a coin graduates to PumpSwap', () => {
     } finally {
         trader.stop();
     }
+});
+
+test('isSolQuote accepts every way pump.fun marks a SOL-quoted coin', () => {
+    assert.ok(isSolQuote(base58Encode(Buffer.alloc(32)))); // default key: ordinary SOL coins
+    assert.ok(isSolQuote(WSOL_MINT));
+    assert.ok(isSolQuote('9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP'));
+    assert.ok(!isSolQuote('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')); // USDC
 });
