@@ -111,7 +111,7 @@ async function check(launch) {
         stats.passed++;
         if (config.entryMode === 'immediate') {
             coins.delete(launch.mint);
-            console.log(`[PASS] ${launch.symbol} ${launch.mint}`);
+            console.log(`[PASS] ${launch.symbol} ${launch.mint}\n        https://pump.fun/coin/${launch.mint}`);
             if (!trader.full && !trader.positions.has(launch.mint)) trader.open(launch, { curve: metrics.curve, price: lastPrice(coin), venue: metrics.venue });
             return;
         }
@@ -134,7 +134,7 @@ async function enter(coin, signal) {
         logDecision({ stage: 'entry', mint: launch.mint, symbol: launch.symbol, venue: metrics.venue, pass, reasons, signal });
         if (!pass) { debug(`[skip] ${launch.symbol} retest signal but filters now fail: ${reasons.join('; ')}`); return; }
         stats.entries++;
-        console.log(`[ENTRY] ${launch.symbol} ${launch.mint} on ${metrics.venue}: run ${signal.metrics.runPct.toFixed(0)}%, pulled back ${signal.metrics.pullbackPct.toFixed(0)}%, bounced ${signal.metrics.bouncePct.toFixed(0)}% on ${signal.metrics.bounceVol.toFixed(1)} SOL`);
+        console.log(`[ENTRY] ${launch.symbol} ${launch.mint} on ${metrics.venue}: run ${signal.metrics.runPct.toFixed(0)}%, pulled back ${signal.metrics.pullbackPct.toFixed(0)}%, bounced ${signal.metrics.bouncePct.toFixed(0)}% on ${signal.metrics.bounceVol.toFixed(1)} SOL\n        https://pump.fun/coin/${launch.mint}`);
         if (!trader.full && !trader.positions.has(launch.mint)) trader.open(launch, { curve: metrics.curve, price: lastPrice(coin), venue: metrics.venue });
     } catch (e) {
         stats.errors++;
