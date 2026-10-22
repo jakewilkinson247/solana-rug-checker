@@ -1,12 +1,15 @@
 // Watches pump.fun and PumpSwap for new coins, runs each through the rug/sniper
 // filters after a short delay, then (in retest mode) watches the ones that pass
 // for a run -> pullback -> bounce off support with healthy volume, and paper-trades it.
-// Coins that graduate from the bonding curve keep being tracked on their PumpSwap pool.
+// Coins that graduate from the bonding curve keep being tracked on their PumpSwap pool,
+// and older coins that suddenly get busy are picked up as candidates too.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { rpc } from '../lib/solana.mjs';
 import { config } from './config.js';
-import { PUMP_PROGRAM, parseLogs, curvePrice } from './pumpfun.js';
-import { PUMPSWAP_PROGRAM, isSolQuote, parseSwapLogs } from './pumpswap.js';
+import { PUMP_PROGRAM, parseLogs, curvePrice, bondingCurveAddress, decodeBondingCurve, TOKEN_DECIMALS } from './pumpfun.js';
+import { PUMPSWAP_PROGRAM, isSolQuote, parseSwapLogs, decodePool } from './pumpswap.js';
+import { ActivityTracker } from './activity.js';
 import { gatherMetrics, evaluate, prefilter } from './filters.js';
 import { analyze } from './strategy.js';
 import { PaperTrader } from './paper.js';
@@ -23,14 +26,30 @@ const coins = new Map();
 const pools = new Map();
 // Symbol -> launch times, for spotting the same name launched over and over.
 const launchesByName = new Map();
+// Recent trades of coins we aren't tracking, keyed by mint (bonding curve) or "pool:<address>"
+// (PumpSwap, whose swap events only name the pool).
+const activity = new ActivityTracker({ lookbackMin: config.existing.historyMin });
+// Mint or activity key -> time until which it isn't picked up again.
+const cooldown = new Map();
+// PumpSwap pools that aren't SOL-paired pump.fun coins.
+const ignoredPools = new Set();
+const promoting = new Set();
 const queue = [];
 let running = 0;
-const stats = { seen: 0, passed: 0, rejected: 0, dropped: 0, errors: 0, entries: 0, died: 0, expired: 0, graduated: 0 };
+const stats = { seen: 0, passed: 0, rejected: 0, dropped: 0, errors: 0, entries: 0, died: 0, expired: 0, graduated: 0, older: 0 };
 
 // Quiet by default: only watches, entries and paper trades. VERBOSE=true shows every coin.
 const debug = config.verbose ? console.log : () => {};
 const logDecision = entry => appendFileSync(decisionsFile, JSON.stringify({ time: new Date().toISOString(), ...entry }) + '\n');
 const tracked = mint => coins.has(mint) || trader.positions.has(mint);
+const cooling = key => (cooldown.get(key) || 0) > Date.now();
+const rest = (...keys) => keys.forEach(k => k && cooldown.set(k, Date.now() + config.existing.cooldownMin * 60_000));
+
+// Stop tracking a coin and don't pick it up again as an older coin for a while.
+function release(launch) {
+    coins.delete(launch.mint);
+    rest(launch.mint, launch.pool && `pool:${launch.pool}`);
+}
 const lastPrice = coin => coin.trades[coin.trades.length - 1]?.price;
 
 function onLaunch(launch) {
@@ -83,7 +102,7 @@ function drain() {
 }
 
 function sameNameCount(launch) {
-    if (launch.pool) return 0; // pool candidates have no symbol from the log stream
+    if (launch.pool || launch.existing) return 0; // no symbol from the log stream
     const since = Date.now() - config.filters.copycatMinutes * 60_000;
     return (launchesByName.get(launch.symbol.trim().toLowerCase()) || []).filter(t => t >= since).length;
 }
@@ -93,7 +112,7 @@ async function check(launch) {
     const pre = prefilter(coin.trades, launch, sameNameCount(launch), config.filters);
     if (!pre.pass) {
         stats.rejected++;
-        coins.delete(launch.mint);
+        release(launch);
         logDecision({ stage: 'prefilter', mint: launch.mint, symbol: launch.symbol, pass: false, reasons: pre.reasons });
         debug(`[reject] ${launch.symbol}: ${pre.reasons.join('; ')}`);
         return;
@@ -104,7 +123,7 @@ async function check(launch) {
         logDecision({ stage: 'filters', mint: launch.mint, symbol: launch.symbol, pass, reasons, metrics: { ...metrics, curve: undefined } });
         if (!pass) {
             stats.rejected++;
-            coins.delete(launch.mint);
+            release(launch);
             debug(`[reject] ${launch.symbol}: ${reasons.join('; ')}`);
             return;
         }
@@ -117,10 +136,10 @@ async function check(launch) {
         }
         coin.state = 'watching';
         coin.watchUntil = Date.now() + config.entry.watchMinutes * 60_000;
-        console.log(`[watch] ${launch.symbol} ${launch.mint} passed filters, waiting for a retest`);
+        console.log(`[watch] ${launch.symbol} ${launch.mint} ${launch.existing ? '(older coin getting busy) ' : ''}passed filters, waiting for a retest`);
     } catch (e) {
         stats.errors++;
-        coins.delete(launch.mint);
+        release(launch);
         debug(`[error] ${launch.symbol}: ${e.message}`);
     }
 }
@@ -148,16 +167,16 @@ function evaluateWatchlist() {
         if (coin.state !== 'watching') continue;
         const signal = analyze(coin.trades, config.entry, now / 1000);
         if (signal.state === 'buy') {
-            coins.delete(mint);
+            release(coin.launch);
             enter(coin, signal);
         } else if (signal.state === 'dead') {
             stats.died++;
-            coins.delete(mint);
+            release(coin.launch);
             logDecision({ stage: 'watch', mint, symbol: coin.launch.symbol, pass: false, reasons: [signal.reason], metrics: signal.metrics });
             console.log(`[drop] ${coin.launch.symbol}: ${signal.reason}`);
         } else if (now >= coin.watchUntil) {
             stats.expired++;
-            coins.delete(mint);
+            release(coin.launch);
             logDecision({ stage: 'watch', mint, symbol: coin.launch.symbol, pass: false, reasons: [`no entry within ${config.entry.watchMinutes} min (last: ${signal.reason})`] });
             console.log(`[expired] ${coin.launch.symbol}: no entry within ${config.entry.watchMinutes} min (last: ${signal.reason})`);
         }
@@ -184,19 +203,76 @@ function onMessage(data) {
         });
     }
     for (const t of trades) {
-        if (!tracked(t.mint)) continue;
-        onTrade(t.mint, { time: t.timestamp, price: curvePrice(t), sol: Number(t.solAmount) / 1e9, isBuy: t.isBuy, user: t.user }, 'curve');
+        const trade = { time: t.timestamp, price: curvePrice(t), sol: Number(t.solAmount) / 1e9, isBuy: t.isBuy, user: t.user };
+        if (tracked(t.mint)) onTrade(t.mint, trade, 'curve');
+        else if (config.existing.enabled && !cooling(t.mint)) activity.add(t.mint, trade);
     }
 
     if (!config.watchPumpSwap) return;
     const { pools: created, swaps } = parseSwapLogs(value.logs);
     for (const p of created) onPool(p, value.signature, slot);
     for (const s of swaps) {
+        if (s.baseAmount === 0n) continue;
         const pool = pools.get(s.pool);
-        if (!pool || s.baseAmount === 0n) continue;
         const sol = Number(s.quoteAmount) / 1e9;
-        const price = sol / (Number(s.baseAmount) / 10 ** pool.decimals);
-        onTrade(pool.mint, { time: s.timestamp, price, sol, isBuy: s.isBuy, user: s.user }, 'pumpswap');
+        // Unknown pools are assumed to be pump.fun coins (6 decimals) until looked up.
+        const price = sol / (Number(s.baseAmount) / 10 ** (pool?.decimals ?? TOKEN_DECIMALS));
+        const trade = { time: s.timestamp, price, sol, isBuy: s.isBuy, user: s.user };
+        if (pool) onTrade(pool.mint, trade, 'pumpswap');
+        else if (config.existing.enabled && !ignoredPools.has(s.pool) && !cooling(`pool:${s.pool}`)) activity.add(`pool:${s.pool}`, trade);
+    }
+}
+
+// Older coins: look up a busy coin's addresses and send it through the normal checks,
+// with the trade history that made it busy.
+async function promote(key) {
+    promoting.add(key);
+    try {
+        let found;
+        if (key.startsWith('pool:')) {
+            const pool = key.slice(5);
+            const info = await rpc('getAccountInfo', [pool, { encoding: 'base64' }]);
+            const p = info?.value && decodePool(info.value.data[0]);
+            if (!p || !isSolQuote(p.quoteMint) || !p.baseMint.endsWith('pump')) {
+                ignoredPools.add(pool);
+                activity.take(key);
+                return;
+            }
+            found = { mint: p.baseMint, pool, user: p.coinCreator };
+        } else {
+            const bondingCurve = bondingCurveAddress(key);
+            const info = await rpc('getAccountInfo', [bondingCurve, { encoding: 'base64' }]);
+            const curve = info?.value && decodeBondingCurve(info.value.data[0]);
+            // A finished curve trades on its pool now; the pool's own activity will pick it up.
+            if (!curve || curve.complete) { activity.take(key); rest(key); return; }
+            found = { mint: key, bondingCurve, user: curve.creator };
+        }
+        if (queue.length >= config.maxQueue) return; // keep the history and try again on a later scan
+        if (tracked(found.mint) || cooling(found.mint)) { activity.take(key); rest(key); return; }
+        if (found.pool) pools.set(found.pool, { mint: found.mint, decimals: TOKEN_DECIMALS });
+        const launch = {
+            ...found, symbol: `${found.mint.slice(0, 6)}…`, uri: null, signature: null, slot: null,
+            timestamp: Math.floor(Date.now() / 1000), devBuyRaw: 0n, existing: true
+        };
+        stats.older++;
+        coins.set(launch.mint, { launch, trades: activity.take(key), state: 'checking', watchUntil: 0 });
+        debug(`[busy] ${launch.symbol} ${launch.mint} (older coin getting busy)`);
+        queue.push(launch);
+        drain();
+    } catch (e) {
+        stats.errors++;
+        debug(`[error] looking up ${key}: ${e.message}`);
+    } finally {
+        promoting.delete(key);
+    }
+}
+
+function scanActivity() {
+    const now = Date.now() / 1000;
+    activity.prune(now);
+    for (const { key } of activity.hot(now, config.existing)) {
+        if (queue.length + promoting.size >= config.maxQueue) break;
+        if (!promoting.has(key) && !cooling(key) && !tracked(key)) promote(key);
     }
 }
 
@@ -221,8 +297,10 @@ function connect(attempt = 0) {
 }
 
 if (config.entryMode === 'retest') setInterval(evaluateWatchlist, config.entry.evalMs);
+if (config.existing.enabled) setInterval(scanActivity, config.existing.scanMs);
 setInterval(() => {
     for (const [pool, { mint }] of pools) if (!tracked(mint)) pools.delete(pool);
+    for (const [key, until] of cooldown) if (until <= Date.now()) cooldown.delete(key);
     const since = Date.now() - config.filters.copycatMinutes * 60_000;
     for (const [name, times] of launchesByName) {
         const recent = times.filter(t => t >= since);
@@ -234,6 +312,7 @@ setInterval(() => console.log(
     `[stats] seen ${stats.seen}, passed ${stats.passed}, rejected ${stats.rejected}, dropped ${stats.dropped}, errors ${stats.errors}` +
     (config.entryMode === 'retest' ? ` | watching ${watchedCoins().length}, entries ${stats.entries}, died ${stats.died}, expired ${stats.expired}` : '') +
     (config.watchPumpSwap ? ` | graduated ${stats.graduated}` : '') +
+    (config.existing.enabled ? ` | older coins picked up ${stats.older}` : '') +
     ` | ${trader.summary()}` +
     watchlistSummary()
 ), config.verbose ? 60_000 : 600_000);

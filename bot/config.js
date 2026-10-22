@@ -19,6 +19,18 @@ export const config = {
     watchPumpSwap: bool('WATCH_PUMPSWAP', true),
     watchPumpSwapPools: bool('WATCH_PUMPSWAP_POOLS', true),
 
+    // Older coins: keep a rolling trade history for every coin and pick up ones that
+    // suddenly get busy, then run them through the same filters and retest logic.
+    existing: {
+        enabled: bool('WATCH_EXISTING', true),
+        windowMin: num('HOT_WINDOW_MINUTES', 5),
+        minVolSol: num('HOT_MIN_VOL_SOL', 15),       // SOL traded within the window...
+        minTraders: num('HOT_MIN_TRADERS', 20),      // ...by at least this many wallets
+        historyMin: num('HISTORY_MINUTES', 60),      // trade history kept per coin
+        cooldownMin: num('COOLDOWN_MINUTES', 60),    // rest after a coin is rejected or dropped
+        scanMs: num('HOT_SCAN_MS', 5_000)
+    },
+
     // How long to let a coin trade before judging it; holders and snipers need time to show up.
     checkDelayMs: num('CHECK_DELAY_MS', 20_000),
     maxConcurrentChecks: num('MAX_CONCURRENT_CHECKS', 2),

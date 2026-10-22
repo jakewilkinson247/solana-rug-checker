@@ -69,7 +69,7 @@ export async function gatherMetrics(launch, f) {
     const [liq, largest, sigs, devAccounts] = await Promise.all([
         liquidity(launch),
         rpc('getTokenLargestAccounts', [launch.mint]),
-        rpc('getSignaturesForAddress', [launch.mint, { limit: 1000 }]),
+        launch.slot == null ? [] : rpc('getSignaturesForAddress', [launch.mint, { limit: 1000 }]),
         rpc('getTokenAccountsByOwner', [launch.user, { mint: launch.mint }, { encoding: 'jsonParsed' }])
     ]);
 
@@ -85,8 +85,8 @@ export async function gatherMetrics(launch, f) {
 
     // Other transactions that landed in the creation slot or the next one: snipers / bundles.
     const oldest = sigs[sigs.length - 1];
-    const earlyBuys = sigs.length === 1000 && oldest.slot > launch.slot + 1
-        ? null // too much activity to see back to launch
+    const earlyBuys = launch.slot == null || (sigs.length === 1000 && oldest.slot > launch.slot + 1)
+        ? null // launch not seen, or too much activity to see back to it
         : sigs.filter(s => !s.err && s.signature !== launch.signature && s.slot <= launch.slot + 1).length;
 
     const devHeldRaw = devAccounts.value.reduce((sum, a) => sum + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n);

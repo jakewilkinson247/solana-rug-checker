@@ -43,11 +43,14 @@ test('parseSwapLogs decodes pool creation, buys and sells', () => {
     assert.equal(swaps[1].quoteAmount, 240_000_000n);
 });
 
-test('decodePool reads mints and vaults at the IDL offsets', () => {
-    const buf = Buffer.concat([Buffer.alloc(8), u(1, 255), u(2, 0), key(1), key(2), wsol, key(4), key(5), key(6), u(8, 0)]);
+test('decodePool reads mints, vaults and the coin creator at the IDL offsets', () => {
+    const buf = Buffer.concat([Buffer.alloc(8), u(1, 255), u(2, 0), key(1), key(2), wsol, key(4), key(5), key(6), u(8, 0), key(7)]);
     assert.deepEqual(decodePool(buf.toString('base64')), {
-        baseMint: base58Encode(key(2)), quoteMint: WSOL_MINT, baseVault: base58Encode(key(5)), quoteVault: base58Encode(key(6))
+        baseMint: base58Encode(key(2)), quoteMint: WSOL_MINT, baseVault: base58Encode(key(5)), quoteVault: base58Encode(key(6)),
+        coinCreator: base58Encode(key(7))
     });
+    // Older, shorter pool accounts have no coin creator.
+    assert.equal(decodePool(buf.subarray(0, 211)).coinCreator, null);
 });
 
 test('paper positions keep pricing after a coin graduates to PumpSwap', () => {

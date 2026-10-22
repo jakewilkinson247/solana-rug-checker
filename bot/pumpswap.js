@@ -64,9 +64,12 @@ export function parseSwapLogs(logs) {
 }
 
 // Pool account: discriminator, bump (u8), index (u16), creator, base mint, quote mint,
-// LP mint, base vault, quote vault.
+// LP mint, base vault, quote vault, LP supply (u64), coin creator (the pump.fun dev).
 export function decodePool(data) {
     const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'base64');
     const at = o => base58Encode(buf.subarray(o, o + 32));
-    return { baseMint: at(43), quoteMint: at(75), baseVault: at(139), quoteVault: at(171) };
+    return {
+        baseMint: at(43), quoteMint: at(75), baseVault: at(139), quoteVault: at(171),
+        coinCreator: buf.length >= 243 ? at(211) : null
+    };
 }

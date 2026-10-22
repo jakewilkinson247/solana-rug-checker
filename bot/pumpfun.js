@@ -1,7 +1,7 @@
 // Decoding for pump.fun program logs and bonding-curve accounts, plus the
 // curve's constant-product price math.
 import { createHash } from 'node:crypto';
-import { base58Encode } from '../lib/solana.mjs';
+import { base58Decode, base58Encode, isOnCurve } from '../lib/solana.mjs';
 
 export const PUMP_PROGRAM = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 export const TOKEN_DECIMALS = 6;
@@ -59,10 +59,27 @@ export function parseLogs(logs) {
     return out;
 }
 
-// Bonding curve account: 8-byte discriminator, five u64 reserves, `complete` flag.
+// Program-derived address, as Solana's findProgramAddressSync computes it.
+export function findProgramAddress(seeds, programId) {
+    const program = Buffer.from(base58Decode(programId));
+    for (let bump = 255; bump >= 0; bump--) {
+        const hash = createHash('sha256')
+            .update(Buffer.concat([...seeds, Buffer.from([bump]), program, Buffer.from('ProgramDerivedAddress')]))
+            .digest();
+        const address = base58Encode(hash);
+        if (!isOnCurve(address)) return address;
+    }
+    throw new Error('no program address found');
+}
+
+export const bondingCurveAddress = mint =>
+    findProgramAddress([Buffer.from('bonding-curve'), Buffer.from(base58Decode(mint))], PUMP_PROGRAM);
+
+// Bonding curve account: 8-byte discriminator, five u64 reserves, `complete` flag, creator.
 export function decodeBondingCurve(data) {
     const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'base64');
     return {
+        creator: buf.length >= 81 ? base58Encode(buf.subarray(49, 81)) : null,
         virtualTokenReserves: buf.readBigUInt64LE(8),
         virtualSolReserves: buf.readBigUInt64LE(16),
         realTokenReserves: buf.readBigUInt64LE(24),

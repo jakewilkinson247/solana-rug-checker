@@ -66,6 +66,20 @@ With `WATCH_PUMPSWAP` (true) the bot also subscribes to PumpSwap, pump.fun's AMM
 PumpSwap carries a lot of trading, so this subscription uses noticeably more
 bandwidth than pump.fun alone. Set `WATCH_PUMPSWAP=false` to turn it off.
 
+### Older coins
+
+Coins don't have to be new. With `WATCH_EXISTING` (true) the bot keeps the last
+`HISTORY_MINUTES` (60) of trades for every pump.fun and PumpSwap coin it sees, from
+the same log stream. When an older coin suddenly gets busy, `HOT_MIN_VOL_SOL` (15)
+SOL traded by `HOT_MIN_TRADERS` (20) wallets within `HOT_WINDOW_MINUTES` (5), it goes
+through the same filters and onto the watchlist with that history, so the run that
+made it busy counts toward the retest pattern. The launch-slot sniper and dev-buy
+checks don't apply to these coins. A coin that is rejected, dropped or expires isn't
+picked up again for `COOLDOWN_MINUTES` (60).
+
+Keeping an hour of every coin's trades takes some memory (tens of MB on a busy day).
+Lower `HISTORY_MINUTES` or set `WATCH_EXISTING=false` if that's a problem.
+
 ### Entry: retest of support, confirmed by volume
 
 With `ENTRY_MODE=retest` (the default), coins that pass the filters go on a
