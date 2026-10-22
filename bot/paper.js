@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { quoteBuy, TOKEN_DECIMALS } from './pumpfun.js';
 
 export class PaperTrader {
-    constructor(cfg, logDir) {
+    constructor(cfg, logDir, { onClose = () => {} } = {}) {
         this.cfg = cfg;
+        this.onClose = onClose;
         this.positions = new Map();
         this.closed = [];
         mkdirSync(logDir, { recursive: true });
@@ -59,6 +60,7 @@ export class PaperTrader {
         this.closed.push(pnlSol);
         this.log({ event: 'close', mint: pos.mint, symbol: pos.symbol, venue: pos.venue, reason, valueSol, pnlSol, heldSec: Math.round((Date.now() - pos.openedAt) / 1000) });
         console.log(`[paper] SELL ${pos.symbol} (${reason}) ${pnlSol >= 0 ? '+' : ''}${pnlSol.toFixed(4)} SOL`);
+        this.onClose({ ...pos, reason, valueSol, pnlSol });
     }
 
     summary() {

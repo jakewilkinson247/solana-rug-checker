@@ -10,6 +10,7 @@ import { config } from './config.js';
 import { PUMP_PROGRAM, parseLogs, curvePrice, bondingCurveAddress, decodeBondingCurve, TOKEN_DECIMALS } from './pumpfun.js';
 import { PUMPSWAP_PROGRAM, isSolQuote, parseSwapLogs, decodePool } from './pumpswap.js';
 import { ActivityTracker } from './activity.js';
+import { createNotifier, coinLink } from './notify.js';
 import { gatherMetrics, evaluate, prefilter } from './filters.js';
 import { analyze } from './strategy.js';
 import { PaperTrader } from './paper.js';
@@ -18,7 +19,14 @@ const MAX_TRADES_PER_COIN = 20_000;
 
 mkdirSync(config.logDir, { recursive: true });
 const decisionsFile = join(config.logDir, 'decisions.jsonl');
-const trader = new PaperTrader(config.paper, config.logDir);
+const notify = createNotifier({ ...config.notify, onError: e => console.error(`[notify] failed: ${e.message}`) });
+const trader = new PaperTrader(config.paper, config.logDir, {
+    onClose: p => notify({
+        title: `${p.pnlSol >= 0 ? 'SELL (profit)' : 'SELL (loss)'}: ${p.symbol}`,
+        message: `${p.reason}, ${p.pnlSol >= 0 ? '+' : ''}${p.pnlSol.toFixed(4)} SOL on ${p.costSol} SOL\n${p.mint}`,
+        click: coinLink(p.mint), priority: 5, tags: [p.pnlSol >= 0 ? 'moneybag' : 'small_red_triangle_down']
+    })
+});
 
 // Every coin being checked or watched, with its trades since launch (from the log stream).
 const coins = new Map();
@@ -130,13 +138,19 @@ async function check(launch) {
         stats.passed++;
         if (config.entryMode === 'immediate') {
             coins.delete(launch.mint);
-            console.log(`[PASS] ${launch.symbol} ${launch.mint}\n        https://pump.fun/coin/${launch.mint}`);
+            console.log(`[PASS] ${launch.symbol} ${launch.mint}\n        ${coinLink(launch.mint)}`);
+            notify({ title: `ENTRY: ${launch.symbol}`, message: `Passed the safety checks\n${launch.mint}`, click: coinLink(launch.mint), priority: 5, tags: ['rotating_light'] });
             if (!trader.full && !trader.positions.has(launch.mint)) trader.open(launch, { curve: metrics.curve, price: lastPrice(coin), venue: metrics.venue });
             return;
         }
         coin.state = 'watching';
         coin.watchUntil = Date.now() + config.entry.watchMinutes * 60_000;
         console.log(`[watch] ${launch.symbol} ${launch.mint} ${launch.existing ? '(older coin getting busy) ' : ''}passed filters, waiting for a retest`);
+        if (config.notify.watch) notify({
+            title: `Watching ${launch.symbol}${launch.existing ? ' (older coin)' : ''}`,
+            message: `Passed the safety checks, waiting for a retest\n${launch.mint}`,
+            click: coinLink(launch.mint), priority: 2, tags: ['eyes']
+        });
     } catch (e) {
         stats.errors++;
         release(launch);
@@ -153,7 +167,9 @@ async function enter(coin, signal) {
         logDecision({ stage: 'entry', mint: launch.mint, symbol: launch.symbol, venue: metrics.venue, pass, reasons, signal });
         if (!pass) { console.log(`[skip] ${launch.symbol} retest signal but filters now fail: ${reasons.join('; ')}`); return; }
         stats.entries++;
-        console.log(`[ENTRY] ${launch.symbol} ${launch.mint} on ${metrics.venue}: run ${signal.metrics.runPct.toFixed(0)}%, pulled back ${signal.metrics.pullbackPct.toFixed(0)}%, bounced ${signal.metrics.bouncePct.toFixed(0)}% on ${signal.metrics.bounceVol.toFixed(1)} SOL\n        https://pump.fun/coin/${launch.mint}`);
+        const summary = `run ${signal.metrics.runPct.toFixed(0)}%, pulled back ${signal.metrics.pullbackPct.toFixed(0)}%, bounced ${signal.metrics.bouncePct.toFixed(0)}% on ${signal.metrics.bounceVol.toFixed(1)} SOL`;
+        console.log(`[ENTRY] ${launch.symbol} ${launch.mint} on ${metrics.venue}: ${summary}\n        ${coinLink(launch.mint)}`);
+        notify({ title: `ENTRY: ${launch.symbol}`, message: `${summary}\n${launch.mint}`, click: coinLink(launch.mint), priority: 5, tags: ['rotating_light'] });
         if (!trader.full && !trader.positions.has(launch.mint)) trader.open(launch, { curve: metrics.curve, price: lastPrice(coin), venue: metrics.venue });
     } catch (e) {
         stats.errors++;
@@ -337,4 +353,5 @@ process.on('SIGINT', () => {
 });
 
 console.log(`Entry mode: ${config.entryMode}. Paper trading ${config.paper.buySol} SOL per entry. Logs in ${config.logDir}`);
+console.log(config.notify.topic ? `Phone notifications on (ntfy topic "${config.notify.topic}")` : 'Phone notifications off (set NTFY_TOPIC to turn them on)');
 connect();

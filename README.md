@@ -26,6 +26,15 @@ pump.fun gets thousands of launches a day and each check makes roughly 10–25
 RPC calls, so the public endpoint will rate-limit it almost immediately.
 `SOLANA_WS_URL` defaults to the RPC URL with `https` → `wss`.
 
+### Phone notifications
+
+Install the free **ntfy** app (iPhone or Android), tap **+**, and subscribe to a
+topic name that's hard to guess (anyone who knows the name can read it). Start the
+bot with the same name in `NTFY_TOPIC` and you get a notification for every entry
+and paper sell (loud) and every newly watched coin (quiet; `NOTIFY_WATCH=false`
+turns these off). Tapping one opens the coin on pump.fun; the coin's address is in
+the message to paste into another app. The bot still runs on your computer.
+
 ### Filters
 
 First, two free checks on the trades already seen in the log stream, so dead

@@ -11,6 +11,13 @@ export const config = {
     rpcUrl,
     wsUrl: process.env.SOLANA_WS_URL || rpcUrl.replace(/^http/, 'ws'),
 
+    // Phone notifications via the ntfy app: set NTFY_TOPIC to the topic you subscribed to.
+    notify: {
+        topic: process.env.NTFY_TOPIC || '',
+        server: process.env.NTFY_SERVER || 'https://ntfy.sh',
+        watch: bool('NOTIFY_WATCH', true)   // entries and sells are always sent
+    },
+
     // Print every coin (new, rejected, dropped) instead of only watches, entries and trades.
     verbose: bool('VERBOSE', false),
 
