@@ -14,8 +14,10 @@ SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY npm start
 npm test
 ```
 
-By default the console only shows coins being watched (`[watch]`), entries
-(`[ENTRY]`), paper buys and sells, and a summary every 10 minutes. Set
+By default the console only shows coins being watched (`[watch]`) and what
+happened to them (`[drop]`, `[expired]`, `[skip]`), entries (`[ENTRY]`), paper
+buys and sells, and every 10 minutes a summary listing each watched coin and
+what it is still waiting for. Set
 `VERBOSE=true` to see every coin, including rejections. Everything is written
 to the log files either way.
 
